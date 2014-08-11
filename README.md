@@ -1,10 +1,12 @@
 #IAMROOT.ORG Kernel스터디10차(ARM)
 
 #HISTORY
-  - 61th (2014/07/05) week study : [61차 스터디](https://github.com/arm10c/linux-stable/blob/master/Reference/88_Review/a10c_61.md)
-  - 60th (2014/06/28) week study : [60차 스터디](https://github.com/arm10c/linux-stable/blob/master/Reference/88_Review/a10c_60.md)
-  - 59th (2014/06/21) week study : [59차 스터디](https://github.com/arm10c/linux-stable/blob/master/Reference/88_Review/a10c_59.md)
-  - 58th (2014/06/14) week study : [58차 스터디](https://github.com/arm10c/linux-stable/blob/master/Reference/88_Review/a10c_58.md)
+  - 62th (2014/07/05) week study : [62차 스터디](https://github.com/arm10c_review/a10c_62.md)
+    - mm_init()->kmem_cache_init()->bootstrab(&boot_kmem_cache) 
+  - 61th (2014/07/05) week study : [61차 스터디](https://github.com/arm10c_review/a10c_61.md)
+  - 60th (2014/06/28) week study : [60차 스터디](https://github.com/arm10c_review/a10c_60.md)
+  - 59th (2014/06/21) week study : [59차 스터디](https://github.com/arm10c_review/a10c_59.md)
+  - 58th (2014/06/14) week study : [58차 스터디](https://github.com/arm10c_review/a10c_58.md)
 
 ...
 
