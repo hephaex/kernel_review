@@ -1,13 +1,16 @@
 #IAMROOT.ORG Kernel스터디10차(ARM)
 
 #HISTORY
-  - 64th (2014/07/19) week study : [64차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_64.md)
+  - 65th (2014/08/09) week study : [64차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_65.md)
+    - start_kernel()-> mm_init()-> vmalloc_init();
+	- vmlist에 등록된 vm struct 들을 slab으로 이관하고 RB Tree로 구성
+  - 64th (2014/07/26) week study : [64차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_64.md)
     - start_kernel()-> mm_init()-> kmem_cache_init()
     - start_kernel()-> mm_init()-> percpu_init_late()
     - start_kernel()-> mm_init()-> pgtable_cache_init()
-  - 63th (2014/07/12) week study : [63차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_63.md)
+  - 63th (2014/07/19) week study : [63차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_63.md)
     - mm_init()->kmem_cache_init()->bootstrab(&boot_kmem_cache_node) 
-  - 62th (2014/07/05) week study : [62차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_62.md)
+  - 62th (2014/07/12) week study : [62차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_62.md)
     - mm_init()->kmem_cache_init()->bootstrab(&boot_kmem_cache) 
   - 61th (2014/07/05) week study : [61차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_61.md)
   - 60th (2014/06/28) week study : [60차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_60.md)
