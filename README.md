@@ -1,6 +1,8 @@
 #IAMROOT.ORG Kernel스터디10차(ARM)
 
 #HISTORY
+  - 63th (2014/07/05) week study : [62차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_63.md)
+    - mm_init()->kmem_cache_init()->bootstrab(&boot_kmem_cache_node) 
   - 62th (2014/07/05) week study : [62차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_62.md)
     - mm_init()->kmem_cache_init()->bootstrab(&boot_kmem_cache) 
   - 61th (2014/07/05) week study : [61차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_61.md)
