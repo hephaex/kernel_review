@@ -1,7 +1,11 @@
 #IAMROOT.ORG Kernel스터디10차(ARM)
 
 #HISTORY
-  - 65th (2014/08/09) week study : [64차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_65.md)
+  - 66th (2014/08/16) week study : [66차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_66.md)
+    - mm_init() 복습;
+	- buddy 까지 복습 (mem_init())
+	- slab(kmem_cache_init())은 다음주에 계속
+  - 65th (2014/08/09) week study : [65차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_65.md)
     - start_kernel()-> mm_init()-> vmalloc_init();
 	- vmlist에 등록된 vm struct 들을 slab으로 이관하고 RB Tree로 구성
   - 64th (2014/07/26) week study : [64차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_64.md)
