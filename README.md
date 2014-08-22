@@ -22,6 +22,7 @@
   - 58th (2014/06/14) week study : [58차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_58.md)
   - 57th (2014/06/07) week study : [57차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_57.md)
   - 56th (2014/05/31) week study : [56차 스터디](https://github.com/hephaex/a10c_review/blob/master/a10c_56.md)
+    - start_kernel()->mm_init()->kmem_cache_init()->create_boot_cache()
 ...
 
   - 11th (2012-07-06) week study : [11차 스터디](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
