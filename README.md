@@ -40,6 +40,9 @@ Kernel version: Linux kernel 3.13.x
  - 이후 할당받은 slab object를 kmem_cache_node로 사용하며,
  - kmem_cache_node의 맴버 속성을 초기화합니다. 
  - 초기화되는 맴버속성은 (nr_partial, list_lock, slabs, full)가 있습니다.
+* 55th (2014/05/24) week study : [55차 스터디](https://github.com/hephaex/kernel_review/blob/master/a10c_55.md)
+ - start_kernel()->mm_init()->kmem_cache_init()->create_boot_cache()
+ - new_slab()
  
 ...
 
