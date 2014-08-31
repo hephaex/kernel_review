@@ -8,6 +8,9 @@ Kernel version: Linux kernel 3.13.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 67th (2014/08/23) week study : [67차 스터디](https://github.com/hephaex/kernel_review/blob/master/a10c_67.md)
+ - mm_init() 복습
+ - slub()　복습
 * 66th (2014/08/16) week study : [66차 스터디](https://github.com/hephaex/kernel_review/blob/master/a10c_66.md)
  - mm_init() 복습;
  - buddy 까지 복습 (mem_init())
