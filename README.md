@@ -8,7 +8,7 @@ Kernel version: Linux kernel 3.13.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
-* 67th (2014/08/30) week study : [68차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_68.md)
+* 68th (2014/08/30) week study : [68차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_68.md)
  - sched_init()
  - rq 설정 (for_each_possible_cpu(i))
 * 67th (2014/08/23) week study : [67차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_67.md)
@@ -49,6 +49,13 @@ Kernel version: Linux kernel 3.13.x
 * 55th (2014/05/24) week study : [55차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_55.md)
  - start_kernel()->mm_init()->kmem_cache_init()->create_boot_cache()
  - new_slab()
+* 54th (2014/05/24) week study : [54차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_54.md) 
+ - buddy할당자에 이어서 kmem 할당자 (Slub)을 분석중입니다. 
+ - mem_init()->kmem_cache_init()->create_boot_cache()->__kmem_cache_create()
+  ->kmem_cache_open()->init_kmem_cache_nodes->early_kmem_cache_node_alloc()
+  ->new_slab()->allocate_slab()->alloc_slab_page()->alloc_pages_exact_node()
+  ->__alloc_pages()->__alloc_pages_nodemask();
+ - 커널 버전을 3.13.11로 바꿨습니다.
  
 ...
 
