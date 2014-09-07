@@ -57,6 +57,13 @@ Kernel version: Linux kernel 3.13.x
   ->__alloc_pages()->__alloc_pages_nodemask();
  - 커널 버전을 3.13.11로 바꿨습니다.
 * 53th (2014/05/10) week study : [53차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_53.md)  
+
+...
+
+* 21th (2013/09/14) week study : [21차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_21.md)
+ - page_address_init()
+ - pr_notice()
+ - setup_arch()->setup_processor()
 ...
 
 * 11th (2012-07-06) week study : [11차 분석](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
