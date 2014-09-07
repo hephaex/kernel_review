@@ -49,14 +49,14 @@ Kernel version: Linux kernel 3.13.x
 * 55th (2014/05/24) week study : [55차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_55.md)
  - start_kernel()->mm_init()->kmem_cache_init()->create_boot_cache()
  - new_slab()
-* 54th (2014/05/24) week study : [54차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_54.md) 
+* 54th (2014/05/17) week study : [54차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_54.md) 
  - buddy할당자에 이어서 kmem 할당자 (Slub)을 분석중입니다. 
  - mem_init()->kmem_cache_init()->create_boot_cache()->__kmem_cache_create()
   ->kmem_cache_open()->init_kmem_cache_nodes->early_kmem_cache_node_alloc()
   ->new_slab()->allocate_slab()->alloc_slab_page()->alloc_pages_exact_node()
   ->__alloc_pages()->__alloc_pages_nodemask();
  - 커널 버전을 3.13.11로 바꿨습니다.
- 
+* 53th (2014/05/10) week study : [53차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_53.md)  
 ...
 
 * 11th (2012-07-06) week study : [11차 분석](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
