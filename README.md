@@ -60,6 +60,9 @@ Kernel version: Linux kernel 3.13.x
 * 51th (2014/04/19) week study : [51차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_51.md)
 ...
 
+* 22th (2013/09/21) week study : [22차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_22.md)
+ - boot/compressed/head.S
+ - kernel/head.S
 * 21th (2013/09/14) week study : [21차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_21.md)
  - page_address_init()
  - pr_notice()
