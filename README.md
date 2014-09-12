@@ -58,8 +58,10 @@ Kernel version: Linux kernel 3.13.x
  - 커널 버전을 3.13.11로 바꿨습니다.
 * 53th (2014/05/10) week study : [53차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_53.md)  
 * 51th (2014/04/19) week study : [51차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_51.md)
+
 ...
 
+* 23th (2013/09/28) week study : [23차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_23.md)
 * 22th (2013/09/21) week study : [22차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_22.md)
  - boot/compressed/head.S
  - kernel/head.S
