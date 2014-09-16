@@ -8,9 +8,19 @@ Kernel version: Linux kernel 3.13.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 69th (2014/08/13) week study : [69차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_69.md)
+ - sched_init()를 계속 분석
+ - sched_init()::for_each_possible_cpu(i) { ... }
+ - sched_init()->set_load_weight()
+ - sched_init()->plist_head_init()
+ - sched_init()->init_idle()
+ - sched_init()->zalloc_cpumask_var()
 * 68th (2014/08/30) week study : [68차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_68.md)
- - sched_init()
- - rq 설정 (for_each_possible_cpu(i))
+ - sched_init()를 계속 분석
+ - sched_init()->init_defrootdomain()
+  - // def_root_domain의 맴버 값을 초기화 수행
+ - sched_init()->init_rt_bandwidth(&def_rt_bandwidth, global_rt_period(), global_rt_runtime());
+ - sched_init()::for_each_possible_cpu(i) { ... } 
 * 67th (2014/08/23) week study : [67차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_67.md)
  - mm_init() 복습
  - slub()　복습
