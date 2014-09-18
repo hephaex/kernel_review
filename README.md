@@ -8,7 +8,7 @@ Kernel version: Linux kernel 3.13.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
-* 69th (2014/08/13) week study : [69차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_69.md)
+* 69th (2014/09/13) week study : [69차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_69.md)
  - sched_init()를 계속 분석
  - sched_init()::for_each_possible_cpu(i) { ... }
  - sched_init()->set_load_weight()
