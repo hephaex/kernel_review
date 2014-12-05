@@ -10,6 +10,7 @@ Kernel version: Linux kernel 3.13.x
 # The history of Linux kernel study
 * 80th (2014/11/29) week: [80차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_80.md)
  - init_IRQ()->...->gic_of_init()->gic_of_bases()
+ - irqchip_init()
 * 79th (2014/11/22) week: [79차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_79.md)
  - init_IRQ()->...->gic_of_init()->gic_of_bases()
 * 78th (2014/11/15) week: [78차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_78.md)
