@@ -8,6 +8,8 @@ Kernel version: Linux kernel 3.13.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 93th (2015/03/07) week: [93차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_93.md)
+ - time_init()
 * 92th (2015/02/28) week: [92차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_92.md)
  - time_init()
 * 91th (2015/02/21) week: [91차 분석](https://github.com/hephaex/kernel_review/blob/master/a10c_91.md)
