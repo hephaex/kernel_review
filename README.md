@@ -2,16 +2,18 @@
 All of this repository are written by hephaex@gmail.com.
 
 Community name: IAMROOT.ORG ARM kernel study 10th C team
-Target Soc    : Samsung Exynos 5420 (ARMv7 A7&A15)
+Target Soc    : Samsung Exynos 5420 (ARMv7 A7&A15 bigLITTLE )
 Kernel version: Linux kernel 3.13.x
- - before start_kernel(): 3.10.x
+ - 3.10.x: A bootstrab before start_kernel(): 3.10.x
  - start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 96th (2015/03/28) week [96차](https://github.com/hephaex/kernel_review/blob/master/a10c_96.md)
+ - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()
 * 95th (2015/03/21) week [95차](https://github.com/hephaex/kernel_review/blob/master/a10c_95.md)
  - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()->of_irq_parse_one()->of_irq_parse_raw()
 * 94th (2015/03/14) week [94차](https://github.com/hephaex/kernel_review/blob/master/a10c_94.md)
- - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()->of_irq_parse_one()->of_irq_parse_raw()
+ - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()
 * 93th (2015/03/07) week [93차](https://github.com/hephaex/kernel_review/blob/master/a10c_93.md)
  - start_kernel()->time_init()->of_clk_init()
  - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()
