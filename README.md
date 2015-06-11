@@ -171,7 +171,7 @@ Kernel version: Linux kernel 3.13.x
  - Arm System Developer's Guide (pt자료)
 * 03th (2012-05-11) week [03차] 22명
  - 리눅스 커널 내부구조 (p.150 ~ 끝)
-* 02th (2012-05-04) week [02차] 27명
+* 02th (2013-05-04) week [02차] 27명
  - 리눅스 커널 내부구조 (p. 88~ p.150)
 * 01th (2013-04-28) week [01차] 34명
  - 리눅스 커널 내부구조 (처음  ~ p. 88)
