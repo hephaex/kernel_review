@@ -163,7 +163,7 @@ Kernel version: Linux kernel 3.13.x
  - Arm System Developer's Guide (Ch.09 ~ Ch.14.4 페이지 테이블)
 * 07th (2012-06-08) week [07차] 20명
  - Arm System Developer's Guide (시작 ~ Ch.09 인터럽트 처리방법)
-* 06th (2012-06-01) week [06차]
+* 06th (2013-06-01) week [06차]
  - ARM v7 아키텍쳐 세미나
 * 05th (2013-05-25) week [05차]
  - ARM v7 아키텍쳐 세미나
