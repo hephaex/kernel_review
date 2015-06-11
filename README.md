@@ -169,7 +169,7 @@ Kernel version: Linux kernel 3.13.x
  - ARM v7 아키텍쳐 세미나
 * 04th (2012-05-18) week [04차] 28명+1 (백창우님)
  - Arm System Developer's Guide (pt자료)
-* 03th (2012-05-11) week [03차] 22명
+* 03th (2013-05-11) week [03차] 22명
  - 리눅스 커널 내부구조 (p.150 ~ 끝)
 * 02th (2013-05-04) week [02차] 27명
  - 리눅스 커널 내부구조 (p. 88~ p.150)
