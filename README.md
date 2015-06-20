@@ -153,6 +153,10 @@ Kernel version: Linux kernel 3.13.x
  - setup_arch()->setup_processor()
 ...
 
+<<<<<<< HEAD
+=======
+* 12th (2013-07-13) week [12차](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
+>>>>>>> 8cf01639352cbf8bca0fae8a8cd8f3df225de090
 * 11th (2013-07-06) week [11차](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
  - arch/arm/boot/compressed/head.S 분석
  - _setup_mmu 종료
