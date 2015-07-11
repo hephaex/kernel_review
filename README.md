@@ -8,6 +8,10 @@ Kernel version: Linux kernel 3.13.x
  - 2nd: start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 108th (2015/07/04) week [108차](https://github.com/hephaex/kernel_review/blob/master/a10c_108.md)
+ - parse_args() 복습
+ - console_init()->con_init()
+ - console_init()->s3c24xx_serial_console_init()
 * 107th (2015/06/27) week [107차](https://github.com/hephaex/kernel_review/blob/master/a10c_107.md)
  - console_init()
 * 106th (2015/06/20) week [106차](https://github.com/hephaex/kernel_review/blob/master/a10c_106.md)
@@ -163,10 +167,8 @@ Kernel version: Linux kernel 3.13.x
  - setup_arch()->setup_processor()
 ...
 
-<<<<<<< HEAD
 =======
 * 12th (2013-07-13) week [12차](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
->>>>>>> 8cf01639352cbf8bca0fae8a8cd8f3df225de090
 * 11th (2013-07-06) week [11차](http://www.iamroot.org/xe/index.php?mid=Kernel_10_ARM&category=172676&page=6&document_srl=174738) 18+2명
  - arch/arm/boot/compressed/head.S 분석
  - _setup_mmu 종료
