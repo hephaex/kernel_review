@@ -1,7 +1,7 @@
 # The Linux Kernel review for ARMv7 3.13.0 (exynos 5420)
 All of this repository are written by hephaex@gmail.com.
 
-Community name: kernelstudy.net 
+Community name: [kernelstudy.net](kernelstudy.net] 
 Target Soc    : Samsung Exynos 5420 (ARMv7 A7&A15 bigLITTLE )
 Kernel version: Linux kernel 3.13.x
  - 1st: 3.10.x, A bootstrab before start_kernel(): 3.10.x
@@ -9,7 +9,7 @@ Kernel version: Linux kernel 3.13.x
 
 # The history of Linux kernel study
 * 115th (2015/08/22) week [115차](https://github.com/hephaex/kernel_review/blob/master/a10c_115.md)
-- cgroup_early_init()
+ - cgroup_early_init()
 * 114th (2015/08/15) week [114차](https://github.com/hephaex/kernel_review/blob/master/a10c_114.md)
  - cgorup 초기 초기화 분석
  - cgroup_early_init()
