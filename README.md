@@ -1,7 +1,7 @@
 # The Linux Kernel review for ARMv7 3.13.0 (exynos 5420)
 All of this repository are written by hephaex@gmail.com.
 
-Community name: [kernelstudy.net](kernelstudy.net] 
+Community name: [kernelstudy.net](kernelstudy.net) 
 Target Soc    : Samsung Exynos 5420 (ARMv7 A7&A15 bigLITTLE )
 Kernel version: Linux kernel 3.13.x
  - 1st: 3.10.x, A bootstrab before start_kernel(): 3.10.x
