@@ -1,4 +1,4 @@
-# The Linux Kernel review for ARMv7 3.13.0 (exynos 5420)
+# The Linux Kernel study of ARMv7 3.13.0 (exynos 5420)
 All of this repository are written by hephaex@gmail.com.
 
 * Community name: [kernelstudy.net](http://kernelstudy.net)
