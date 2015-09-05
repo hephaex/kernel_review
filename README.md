@@ -9,7 +9,7 @@ All of this repository are written by hephaex@gmail.com.
 
 # The history of Linux kernel study
 * 115th (2015/08/22) week [115차](https://github.com/hephaex/kernel_review/blob/master/a10c_115.md)
- - cgroup_early_init()
+ - cgroup_early_init() 분석
 * 114th (2015/08/15) week [114차](https://github.com/hephaex/kernel_review/blob/master/a10c_114.md)
  - cgorup 초기 초기화 분석
  - cgroup_early_init()
