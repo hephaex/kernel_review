@@ -9,7 +9,7 @@ All of this repository are written by hephaex@gmail.com.
 
 # The history of Linux kernel study
 * 118th (2015/10/03) week [118차](https://github.com/hephaex/kernel_review/blob/master/a10c_118.md)
- - 
+ - d
 * 117th (2015/09/19) week [117차](https://github.com/hephaex/kernel_review/blob/master/a10c_117.md)
  - pidmap_init()
 * 116th (2015/09/12) week [116차](https://github.com/hephaex/kernel_review/blob/master/a10c_116.md)
