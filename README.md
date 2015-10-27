@@ -9,7 +9,15 @@ All of this repository are written by hephaex@gmail.com.
 
 # The history of Linux kernel study
 * 119th (2015/10/10) week [119차](https://github.com/hephaex/kernel_review/blob/master/a10c_119.md)
- - d
+ - buffer_init()
+   - buffer_head 를 사용하기 위한 kmem_cache 할당자 및 max_buffer_heads 값 초기화 수행
+ - key_init()
+   - null funtion()
+ - security_init()
+   - null function()
+ - dbg_late_init()
+   - null function()
+ - vfs_caches_init()
 * 118th (2015/10/03) week [118차](https://github.com/hephaex/kernel_review/blob/master/a10c_118.md)
  - proc_caches_init() 
    - sighand_struct, signal_struct, files_struct, fs_struct, mm_struct, vm_area_struct, nsproxy를
