@@ -11,7 +11,8 @@ All of this repository are written by hephaex@gmail.com.
 * 119th (2015/10/10) week [119차](https://github.com/hephaex/kernel_review/blob/master/a10c_119.md)
  - d
 * 118th (2015/10/03) week [118차](https://github.com/hephaex/kernel_review/blob/master/a10c_118.md)
- - d
+ - proc_caches_init() 
+   - sighand_struct, signal_struct, files_struct, fs_struct, mm_struct, vm_area_struct, nsproxy                        - 를 사용하기 위한 kmem_cache 할당자 및 percpu list 초기화 수행 
 * 117th (2015/09/19) week [117차](https://github.com/hephaex/kernel_review/blob/master/a10c_117.md)
  - anon_vma_init();
    - anon vma 를 사용하기 위한 kmem_cache 할당자 초기화 수행
