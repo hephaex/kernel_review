@@ -13,7 +13,16 @@ All of this repository are written by hephaex@gmail.com.
 * 118th (2015/10/03) week [118차](https://github.com/hephaex/kernel_review/blob/master/a10c_118.md)
  - d
 * 117th (2015/09/19) week [117차](https://github.com/hephaex/kernel_review/blob/master/a10c_117.md)
- - pidmap_init()
+ - anon_vma_init();
+   - anon vma 를 사용하기 위한 kmem_cache 할당자 초기화 수행
+ - thread_info_cache_init();
+   - null function
+ - cred_init();
+   - credentials 를 사용하기 위한 kmem_cache 할당자 초기화 수행
+ - fork_init(totalram_pages);
+   - totalram_pages: 총 free된 page 수
+   - task_struct 를 사용하기 위한 kmem_cache 할당자 초기화 수행
+   - max_threads값을 계산하여 init_task에 threads값의 limit 값 설정함
 * 116th (2015/09/12) week [116차](https://github.com/hephaex/kernel_review/blob/master/a10c_116.md)
  - pidmap_init()
 * 115th (2015/08/22) week [115차](https://github.com/hephaex/kernel_review/blob/master/a10c_115.md)
