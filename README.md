@@ -100,7 +100,6 @@ All of this repository are written by hephaex@gmail.com.
 * 97th (2015/04/04) week [97차](https://github.com/hephaex/kernel_review/blob/master/a10c_97.md)
 * 96th (2015/03/28) week [96차](https://github.com/hephaex/kernel_review/blob/master/a10c_96.md)
  - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()
- - iamroot.org 운영자 회의
 * 95th (2015/03/21) week [95차](https://github.com/hephaex/kernel_review/blob/master/a10c_95.md)
  - start_kernel()->time_init()->clocksource_of_init()->mct_init_spi()->mct_init_dt()->irq_of_parse_and_map()->of_irq_parse_one()->of_irq_parse_raw()
 * 94th (2015/03/14) week [94차](https://github.com/hephaex/kernel_review/blob/master/a10c_94.md)
@@ -212,6 +211,10 @@ All of this repository are written by hephaex@gmail.com.
  - 커널 버전을 3.13.11로 바꿨습니다.
 * 53th (2014/05/10) week [53차](https://github.com/hephaex/kernel_review/blob/master/a10c_53.md)  
 * 51th (2014/04/19) week [51차](https://github.com/hephaex/kernel_review/blob/master/a10c_51.md)
+* 50th (2014/04/12) week [50차](https://github.com/hephaex/kernel_review/blob/master/a10c_50.md)
+* 49th (2014/04/05) week [49차](https://github.com/hephaex/kernel_review/blob/master/a10c_49.md)  
+* 48th (2014/03/29) week [48차](https://github.com/hephaex/kernel_review/blob/master/a10c_48.md)
+* 47th (2014/03/22) week [47차](https://github.com/hephaex/kernel_review/blob/master/a10c_47.md)
 
 ...
 
@@ -223,6 +226,7 @@ All of this repository are written by hephaex@gmail.com.
  - page_address_init()
  - pr_notice()
  - setup_arch()->setup_processor()
+
 ...
 
 =======
