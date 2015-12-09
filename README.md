@@ -8,10 +8,18 @@ All of this repository are written by hephaex@gmail.com.
  - 2nd: start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
-* 124th (2015/11/21) week [124차](https://github.com/hephaex/kernel_review/blob/master/a10c_124.md)
+* 126th (2015/12/05) week [126차](https://github.com/hephaex/kernel_review/blob/master/a10c_126.md)
  - vfs_caches_init()
   - mnt_init()
     - sysfs_init()
+* 125th (2015/11/27) week [125차](https://github.com/hephaex/kernel_review/blob/master/a10c_125.md)
+ - vfs_caches_init()
+  - mnt_init()
+    - sysfs_init()
+* 124th (2015/11/21) week [124차](https://github.com/hephaex/kernel_review/blob/master/a10c_124.md)
+ - vfs_caches_init()
+   - mnt_init()
+     - sysfs_init()
 * 123th (2015/11/14) week [123차](https://github.com/hephaex/kernel_review/blob/master/a10c_123.md)
  - vfs_caches_init()
   - mnt_init()
@@ -221,6 +229,7 @@ All of this repository are written by hephaex@gmail.com.
 * 49th (2014/04/05) week [49차](https://github.com/hephaex/kernel_review/blob/master/a10c_49.md)  
 * 48th (2014/03/29) week [48차](https://github.com/hephaex/kernel_review/blob/master/a10c_48.md)
 * 47th (2014/03/22) week [47차](https://github.com/hephaex/kernel_review/blob/master/a10c_47.md)
+* 46th (2014/03/15) week [46차](https://github.com/hephaex/kernel_review/blob/master/a10c_46.md)
 
 ...
 
