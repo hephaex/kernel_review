@@ -11,6 +11,7 @@ All of this repository are written by hephaex@gmail.com.
 * 130th (2016/01/16) week [130차](https://github.com/hephaex/kernel_review/blob/master/a10c_130.md)
  - vfs_caches_init()
   - mnt_init()
+  - 
 * 129th (2016/01/09) week [129차](https://github.com/hephaex/kernel_review/blob/master/a10c_129.md)
  - vfs_caches_init()
   - mnt_init()
