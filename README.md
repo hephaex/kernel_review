@@ -34,7 +34,6 @@ All of this repository are written by hephaex@gmail.com.
  - vfs_caches_init()
   - mnt_init()
     - sysfs_init()
-    - 
 * 124th (2015/11/21) week [124차](https://github.com/hephaex/kernel_review/blob/master/a10c_124.md)
  - vfs_caches_init()
    - mnt_init()
