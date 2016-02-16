@@ -1,0 +1,949 @@
+==== 29주차(2013.11.09) ====
+<box center round blue 95% | <typo fs:18px;> ** 1. setup_arch()->paging_init()->map_lowmem()  ** </typo>>
+\\
+{{ :스터디:figures:10차_armc:29주차:map_lowmem3.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) 28주차 마지막 이슈였던 create_mapping()함수에서 virtual값에 대해 토론 **  </typo>
+----
+> <wrap em><typo fs:16px;>A) 문제점 인식</typo></wrap> 
+>
+> <typo fs:14px;> <fc #0000FF>** "md->virtual 값이 TASK_SIZE보다 작음" **</fc> </typo>
+>
+> 아래 code와 같이 if문에 진입하여 BUG를 출력하는 현상이 발생하였습니다.
+> 여기서 <fc #0000FF>md->virtual 값은 0xA000_0000, TASK_SIZE는 0XBF00_0000</fc> 입니다.
+>
+> 정상적인 code라면 당연히 BUG를 출력하지 않는다고 판단하였기에, 무엇인가 계산이 잘못되었다고 판단했습니다.
+> <code c>
+static void __init create_mapping(struct map_desc *md) 
+{
+
+   ...
+        if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+                printk(KERN_WARNING "BUG: not creating mapping for 0x%08llx"
+                       " at 0x%08lx in user region\n",
+                       (long long)__pfn_to_phys((u64)md->pfn), md->virtual);
+                return;
+        }   
+   ...   
+</code>       
+> md->virtual 값과 TASK_SIZE 값의 계산은 다음과 같이 진행 되었습니다.
+>
+>> **- TASK_SIZE: 0xBF00_0000**
+>>
+>>　TASK_SIZE는 아래 code와 같이 정의되어 있고, CONFIG_PAGE_OFFSET이 0xC000_0000로 정의되어 있어서 0xBF00_0000임을 알 수 있습니다.
+>> <code c>
+#define TASK_SIZE               (UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M))
+</code>
+>>
+>> **- md->virtual: 0xA000_0000**
+>>
+>> 먼저 Exynos5420의 memory를 파악하기 위해서 dts파일을 열어보면, 다음 그림과 같이 나타납니다.
+>> {{ :스터디:figures:10차_armc:29주차:exynos5420-dts.png?direct |}}
+>>
+>> 의미는 25주차때 setup_arch()→setup_machine_fdt()에서 공부했던 것처럼, <fc #0000FF>앞의 0x2000_0000은 base</fc> 주소, 뒤의 <fc #0000FF>0x8000_0000은 size</fc>입니다.
+>> 결국 <fc #0000FF>0x2000_0000 ~ 0xA000_0000 까지 총 2G의 물리 메모리를 사용</fc>함을 확인하였습니다.
+>>
+>>
+>> 이제 md->virtual 값을 계산해 봅시다.
+>> md->virtual 값은 regions[0]->base의 virtual address로 결정됩니다.
+>> <code c>
+map.virtual = _phys_to_virt(start);
+</code>
+>> 여기서 <nowiki> __phys_to_virt() </nowiki>는 fixup_pvtable에 의해 arch/arm/kernel/head.s에서 수정되었으며, 수정시 사용된 offset은 컴파일 타임과 runtime 주소의 차이(delta)에 의해 결정됩니다.
+>>
+>> runtime 주소는 kernel이 수행되는 주소이고, 이 주소는 아래 그림과 같이 zreladdr에 의해 결정됩니다.
+>> {{ :스터디:figures:10차_armc:29주차:zreladdr.png?direct |}}
+>>
+>> Exynos5420의 경우 CONFIG_AUTO_ZRELADDR이 설정이 안되어 있기 때문에, 바로 zreladdr값을 불러옵니다. zreladdr값은 다음과 같이 "**arch/arm/mach-exynos/Makefile.boot**"에서 확인 가능합니다. 
+>> <code c>
+   zreladdr-y   += 0x40008000
+   params_phys-y   := 0x40000100
+</code>
+>>>
+>>> 추가로 위 code에서 CONFIG_AUTO_ZRELADDR이 설정되어 있다 하더라도, 128MB 단위로 마스킹한 결과에 TEXT_OFFSET을 추가하는 것이기 때문에 **결과는 크게 차이가 없습니다.**
+>>> 
+>>> AUTO_ZRELADDR = (현재PC & 0xf800_0000) + 0x8000 (TEXT_OFFSET)
+>>
+> 결국 kernel Image가 0x4000_8000에서 실행하기 때문에 <fc #0000FF>virtual 주소는 0xA000_0000</fc> <nowiki> ((x) - PHYS_OFFSET + PAGE_OFFSET) </nowiki> 입니다. 
+>
+>
+>
+> <wrap em><typo fs:16px;>B) 분석 및 토론</typo></wrap> 
+>
+> 위에서 언급한 문제점을 해결하기 위해 다음과 같은 가정을 하였습니다.
+>
+> <typo fs:14px;> <fc #0000FF>** "kernel의 물리주소가 0x2000_8000 에서 수행" ** </fc> </typo>
+>
+> 위에서 언급한 kernel의 물리주소가 0x2000_8000라고 가정하면 runtime 주소는 kernel이 수행되는 주소이기에 PHYS_OFFSET도 0x2000_0000이 되고, 따라서 <nowiki> __phys_to_virt() </nowiki>에 의한 가상 주소 변환값도 0xC000_0000이 되어 if문을 수행하지 않습니다.
+>
+> 하지만 kernel의 물리주소가 0x2000_8000에서 수행이 된다면, 다음의 사항을 반드시 만족해야 합니다.
+>
+>
+> **① zreladdr의 설정값(현재 0x4000_8000)과는 상관없이 kernel은 반드시 물리 메모리 base+0x8000에 존재하여야 한다.**
+>>
+>> 결론부터 얘기하면, 이렇게 해야 된다는 근거, 문서, code등 발견한 것이 없습니다.
+>> 그래도 이게 맞다고 가정한다면, 생각해 볼 수 있는 추측은 <fc #0000FF>메모리의 dual channel</fc>입니다.
+>> 
+>> 물리메모리의 주소라는 것은 반드시 SoC 스펙을 따라야 합니다. 예를들어 Exynos5250의 spec은 DRAM이 0x2000_0000부터 시작되지만, dts에 따르면 0x4000_0000입니다. 이경우 0x2000_0000을 0x4000_0000으로 이동해서 쓴다는 개념이 아니라 <fc #0000FF>DDR의 dual channel 기능</fc> 입니다.
+>> 
+>> 이 개념은 LPAE에서 조금 더 자세하게 나오는데, OMAP에서 0x2000_0000 ~ 0x4000_0000 쯤에 DDR0을 가져다놓고, 0x8000_0000이상에 DDR1을 맵핑하는 사례가 있습니다.
+>>
+>> 따라서 위의 가정이 맞다면, 
+>> Exynos5 family의 경우 0x2000_0000쯤 DDR0, 0x4000_0000쯤 DDR1 컨트롤러가 존재할 것이고, 기존 Exynos 5250, 5410 등 다른 Exynos는 0x4000_0000을 부팅용으로 사용했는데, 어떠한 이유에서인지 Exynos 5420에서는 0x2000_000를 부팅용으로 사용한다고 추측해볼 수 있습니다.
+>>
+>> 하지만 추측일 뿐이고, 확실한 것은 아닙니다.
+>
+>
+> **② 위에서 언급한 가정이 맞더라도, kernel이 memory base+0x8000 위치에 존재하면 kernel 이전 주소의 memory는 어떻게 할당 가능한가  **
+>>
+>> {{ :스터디:figures:10차_armc:29주차:sram_byg.png?direct |}}
+>>
+>> 현재 시스템으로는 DDR 메모리를 가정하고 있는데, 추가로 SRAM같은 메모리도 충분히 사용할 수 있습니다. 그런 경우 위의 그림과 같이 dtb 가 설정된 경우는 무조건 BUG로 봐야 하는 문제점이 존재합니다.
+>> 
+>> 이 경우에 아래와 같은 의문이 추가로 제기됩니다.
+>> - 부팅을 완료한 후 디바이스로 잡으면 사용가능 하겠지만, 매끄럽지 못한 코드 진행같다.
+>> - 그렇다면 BUG를 출력하여도 단순히 개발자에게 경고만 할 뿐, 무시 할만한 구문인가?
+>>
+>
+>
+> <wrap em><typo fs:16px;>C) 결론 </typo></wrap> 
+>
+> 일단 저희끼리 내린 결론부터 얘기하면, 진행한 토론중 확실히 매듭지은 사항은 없고 당장 스터디를 진행해야 하기 때문에 <wrap em>exynos5420-smdk5420.dts의 base 주소가 잘못되었다고 가정</wrap>하고 <wrap em>base를 0x4000_0000으로 잡고 진행</wrap>하기로 하였습니다.
+>
+> 향후 <fc #0000FF>타겟보드의 실험데이터</fc>나, <fc #0000FF>기반지식이 더 쌓이면</fc>, 다시 토론하여 수정하기로 결론 내렸습니다.
+>
+> 이제 지금부터 진행할 최종 memory map은 다음 그림과 같습니다.
+> {{ :스터디:figures:10차_armc:29주차:memory_physical3.png?direct&500 |}}
+> {{ :스터디:figures:10차_armc:29주차:memory_virtual3.png?direct&500 |}}
+>
+> 자세한 결론 내용은 다음과 같습니다.
+>
+>**① 위에서 언급한 kernel의 물리 메모리 시작주소 + 0x8000 추측이 맞는 경우  **
+>>
+>> 아직 해결해야할 부분이 많이 있습니다. 매끄럽지 못한 부분도 상당히 존재하고, 커널코드를 더 봐야 해결할 수 있는 부분도 존재할 것이라 생각합니다. 안타깝지만 현재는 부족한 논리로 결론을 내기 보다는, <fc #0000FF>그동안 공부하고 머리속에 확실하다고 집어넣은 fact만 믿고 나가기로</fc> 하였습니다. 
+>>
+>> 하지만 우리가 모르는 어떠한 이유에 의해 맞을 수도 있는 사항이므로 FIXME로 남겨둡니다.
+>>
+>
+>**② kernel의 zreladdr 주소가 잘못 되었거나, exynos5420-smdk5420.dts의 base 주소가 잘못되었다고 가정 **
+>>
+>> kernel의 code가 exynos5420에 맞춰서 작성이 안되어 있거나, exynos5420-smdk5420.dts가 어떤 타겟을 바탕으로 작성했는지도 현재로서는 신뢰성이 많이 떨어지기에, 믿을 수 없다고 판단 하였습니다.
+>>
+>> 현재로서 추측하는 smdk5420은 삼성 개발자 보드라고 보여지며, 5420 코드 자체를 수정안하고 커밋했을 수도 있고 현재로서는 많은 변수가 있어서 확인이 불가능합니다.
+>>
+>> 둘다 틀렸다고 판단해 본다면, kernel code의 수정보다 dts가 잘못되었다는것이 최종결론입니다. (또한 그동안 exynos5 family의 base 정보를 본다면, 가장 신뢰성이 있습니다.)
+>>
+>> 또한 <fc #0000FF>그동안의 주석 및 그림의 최소 수정을 위해서도 dts가 잘못되었다고 판단하는 것이 가장 현명</fc>하다고 판단하였습니다.
+>>
+>> 혹시 상위 include file에서 dts파일의 수정 여부가 가능한지 토론하였으나 변경은 없었고, 저희는 애초에 dtb를 binary level로 분석했기에 해당 사항은 없었습니다.
+>
+>
+> **③ 타겟보드를 통한 확인  **
+>>
+>> 확실하게 결과를 볼 수 있는 것은 실제 타겟보드 or 실제 타겟보드가 돌아가는 dtb를 확인하는 것입니다.
+>> 하지만 회사에서는 보안문제가 있고, 현재까지 공식적으로 확인할 수 있는 방법은 arndale-5420 보드를 구매하는 방법입니다.
+>>
+>> 구매요청중에 있으나, 언급한대로 딜리버리가 4주나 되기 때문에 시간이 걸리는 문제입니다.
+>> 추가로 arndale의 경우 android를 먼저 release하는데, 아직 kernel이 dtb를 사용하지 않아서 이경우는 의미가 없습니다.
+>> 
+>> android 버전이 올라가는 방법과 arndale의 경우 linaro에서 ubuntu 버전도 공개는 하기 때문에, 현재는 대기해야 합니다.
+>> 참고로 arndale-5250 보드의 경우 kernel 3.11까지는 공식적으로 올라와 있고, 3.12-RC6 버전도 작업 중입니다.
+>> 
+>> <fc #0000FF>어쨌든 당장 확인할 수 있는 방법이 아니므로, 이 방법은 대기</fc>해야 합니다.
+>>
+>
+> 이 이슈는 계속 FIXME로 남겨둘테니, 정보가 생기면 계속 update 부탁 드립니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) DDR의 dual channel을 언급하셨는데, memory controller를 2개 부착하는것이 가능한가요? **  </typo>
+----
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0&#주차_20131012 | 25주차]] 1-13) 에서 bank언급하였을때 잠시 얘기하였지만, 가능합니다.
+>
+> dual channel은 실제로는 물리적으로 완전히 분리되어 있습니다. 그리고 외부에서는 전히 독립적인 핀이 존재합니다. Exynos의 경우 dual channel이라고 명시가 되어 있습니다.
+> FIXME
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) 만약 memory가 512MB로 작다면 어떻게 될까? 그리고 highmem의 용량보다 작은 128MB면 어떻게 동작할까요? **  </typo>
+----
+> 먼저 lowmem은 kernel이 직접 제어를 할 수 있는 영역입니다. 만약 메모리를 512MB로 가정하면, lowmem은 512MB입니다. 마찬가지로 128MB면, lowmem은 128MB입니다.
+>
+> x86얘기를 잠깐하면, 리눅스가 처음 개발했던 i386의 경우 protection mode의 경우 접근할 수 있는 메모리 용량이 896MB였습니다. 그래서 896MB 이하는 lowmem, 이상은 highmem이었습니다. 하지만 ARM은 그렇게 할 필요 없이, 직접 컨트롤이 가능합니다. 
+>
+>
+> 메모리가 256MB존재하는 시스템이라고 가정합시다. 여기에 만약 task1을 만들었다고 가정하면 user space에 할당되는데, 메모리 일부를 할당 할 것입니다. 할당하는 역할은 pte가 담당하는데, pte 속성 중 MT device, shareable 등이 있어서 table을 통해 관리를 해줍니다.
+>
+> pte를 리눅스에서 확인하는 방법은 /proc/iomem을 통해 가능합니다.
+>
+> 아래 결과는 arndale-5250 보드의 결과입니다.(Kernel 3.10.1)
+> <code c>
+root@localhost:/proc# cat ./iomem
+03860000-03860fff : /pinctrl@03860000
+10060000-100600ff : /tmu@10060000
+101e0000-101e00ff : /rtc
+10800000-10800fff : /amba/mdma@10800000
+  10800000-10800fff : /amba/mdma@10800000
+10d10000-10d10fff : /pinctrl@10d10000
+11400000-11400fff : /pinctrl@11400000
+11c10000-11c10fff : /amba/mdma@11C10000
+  11c10000-11c10fff : /amba/mdma@11C10000
+12000000-12007fff : /usb@12000000/dwc3
+  12000000-12007fff : xhci-hcd
+1200c100-1200ffff : 12000000.dwc3
+12100000-121000ff : /usbphy@12100000
+12130000-121300ff : /usbphy@12130000
+121a0000-121a0fff : /amba/pdma@121A0000
+  121a0000-121a0fff : /amba/pdma@121A0000
+121b0000-121b0fff : /amba/pdma@121B0000
+  121b0000-121b0fff : /amba/pdma@121B0000
+121d0000-121d00ff : /i2c@121D0000
+12200000-12200fff : /dwmmc0@12200000
+12220000-12220fff : /dwmmc2@12220000
+12c00000-12c000ff : 12c00000.serial
+12c10000-12c100ff : 12c10000.serial
+12c20000-12c200ff : 12c20000.serial
+12c30000-12c300ff : 12c30000.serial
+12c60000-12c600ff : /i2c@12C60000
+12c80000-12c800ff : /i2c@12C80000
+12ce0000-12ce0fff : /i2c@12CE0000
+13400000-13400fff : /pinctrl@13400000
+14530000-1459ffff : /hdmi
+40000000-42ffffff : System RAM
+  40008000-4065daf3 : Kernel code
+  406b6000-4079fe77 : Kernel data
+43800000-50ffffff : System RAM
+51800000-af7fffff : System RAM
+b0000000-bfffffff : System RAM
+</code>
+>
+> 실제 물리메모리가 low memory limit보다 작다면, 하이 메모리는 없습니다. 
+> 부트 로그를 보면 이것을 확인할 수 있습니다.
+<code>
+Memory: 74MB 1MB = 75MB total
+Memory: 70676k/70676k available, 11244k reserved, 0K highmem
+Virtual kernel memory layout:
+    vector  : 0xffff0000 - 0xffff1000   (   4 kB)
+    fixmap  : 0xfff00000 - 0xfffe0000   ( 896 kB)
+    DMA     : 0xffc00000 - 0xffe00000   (   2 MB)
+    vmalloc : 0xc5800000 - 0xf8000000   ( 808 MB)
+    lowmem  : 0xc0000000 - 0xc5000000   (  80 MB)
+    pkmap   : 0xbfe00000 - 0xc0000000   (   2 MB)
+    modules : 0xbf000000 - 0xbfe00000   (  14 MB)
+      .init : 0xc0008000 - 0xc003e000   ( 216 kB)
+      .text : 0xc003e000 - 0xc04ba000   (4592 kB)
+      .data : 0xc04ba000 - 0xc04fabc0   ( 259 kB)
+SLUB: Genslabs=11, HWalign=64, Order=0-3, MinObjects=
+</code>
+
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) PAGE_ALIGN의 의미가 무엇인가요? 12bit align이라고 보면 되나요? **  </typo>
+<code>
+#define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
+</code>
+----
+> 말 그대로 Page(4k)를 align 하는 것입니다. 약간이라도 page가 걸쳐 있으면 포함한다고 생각하면 되고, 끝나는 지점이 1k라면 마지막 것까지 align한다는 의미입니다. 
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) <nowiki> if (type->plot_l1 && ((addr | phys | length) & ~SECTION_MASK))의 의미?</nowiki>  **  </typo>
+<code c>
+if (type->prot_l1 == 0 && ((addr | phys | length) & ~SECTION_MASK)) {
+        printk(KERN_WARNING "BUG: map for 0x%08llx at 0x%08lx can not "
+               "be mapped using pages, ignoring.\n",
+               (long long)__pfn_to_phys(md->pfn), addr);
+        return;
+} 
+</code>
+----
+> create_mapping()은 다른 곳에서도 사용할텐데, (prot_l1 == 0)의 의미는 4KB 이런걸로 쓰지 않겠다는 의미입니다.
+> 즉 virtual(addr), Physical(phys), length중에 하나라도 Section align이 안되어 있다면 BUG를 출력한다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) boundary 연산에서 -1을 하는 이유는 무엇일까요? **  </typo>
+<code>
+#define pgd_addr_end(addr, end)                                         \
+({      unsigned long __boundary = ((addr) + PGDIR_SIZE) & PGDIR_MASK;  \
+        (__boundary - 1 < (end) - 1)? __boundary: (end);                \
+}) 
+</code>
+----
+> pgd_addr_end()는 다음 pgd를 구하기 위한 목적입니다. 
+> -1을 하는 이유는 unsigned형이기 때문에 boundary의 연산이 0xFFE0_0000 에서 2M를 더하면 0이 되어 버린다. 이런 현상을 방지하려고 -1을 하여 연산한다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 7) <nowiki> __pmd(phys | type->prot_sect)의 의미가 무엇인가요? </nowiki> **  </typo>
+<code c>
+static void __init __map_init_section(pmd_t *pmd, unsigned long addr,
+                        unsigned long end, phys_addr_t phys,
+                        const struct mem_type *type)
+{               
+        pmd_t *p = pmd;                         
+                
+...
+
+        do {
+                *pmd = __pmd(phys | type->prot_sect);
+
+                phys += SECTION_SIZE;
+        } while (pmd++, addr += SECTION_SIZE, addr != end);
+
+        flush_pmd_entry(p);
+}
+</code>
+----
+> SECTION register를 보여주고, prot_sect값을 넣는 다는 뜻입니다.
+> FIXME
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 8) pmd도 8바이트씩 증가하는것 맞죠? **  </typo>
+----
+> pgd와 개념을 혼란스러워 하신 것 같습니다. <fc #0000FF>pmd는 4byte로 정의</fc> 되어 있습니다.
+> <code c>
+typedef pmdval_t pmd_t;
+typedef pmdval_t pgd_t[2];
+</code>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 9) PMD를 근데 왜 사용하고 있나요? 우리는 PGD와 PTE만 사용한다고 하지 않았나요? **  </typo>
+----
+> 아예 안쓰는 개념은 아닙니다. 
+> PGD는 2MB 단위로 사용하고, PMD는 1MB 단위로 사용합니다.
+>
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차]] 2-4)에서도 이미 정리했듯이, PGD를 section 2개 (2MB)에 대한 pointer로 사용하고 PMD는 각각 1MB section을 가리킵니다.
+> 결국 PGD와 PMD 모두 L1 descriptor 관리에 사용됩니다.
+>
+> 따라서 L2 descriptor는 PTE를 사용하고 3 level descriptor에서는 PTE_S2를 두어 L3 descriptor로 사용합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 10) 원래 PGD가 1M인데, 우리가 2M로 사용하기로 했던것 아니었나요? PMD가 갑자기 들어온것이 그래도 이해가 안갑니다. **  </typo>
+----
+> 다시 정리하면, 원래 리눅스가 2M 단위로 관리합니다. (ARM에서만, x86은 해당사항 없음)
+> 이 단위가 PGD이고, PMD개념은 여전히 필요합니다.
+>
+> 예를들어 리눅스가 2M으로 관리를 하고 있는데, 유저가 1M단위로 관리하면 어떻게 될까요?
+> 그래서 이런경우 PMD를 사용하는 것입니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 11) 말씀하신 대로면 현재 우리가 사용하는 것은 3-level 참조인 것이죠?  **  </typo>
+----
+> 그건 아닙니다. 2-level 참조는 맞습니다.
+>
+> 2-level이긴 한데, PGD와 PTE만 있으면 table 관리가 되는 것이고, PMD는 1M 참조를 하는 것입니다.
+>
+> 사실 거꾸로 얘기해도 같은 개념입니다. 어떻게 보면 PMD와 PTE를 관리하는 것인데, 리눅스가 관리하기 위해 PGD를 만들었다고 봐도 될 것 같네요.
+>
+> 
+> 자~ 이제 우리 PGD, PTE정리했던 그림을 조금 더 확장시켜서 ARM 하드웨어와 묶으면 완벽해 질것 같습니다.
+>
+> 제가 완벽히 이해해서 정리하기에는 이번주 시간이 부족하기도 하고, 저도 ARM하고 묶어서 그려보려 하니 조금 혼란스럽기도 하네요.. 혹시 조금 더 공부하거나 이해하신 분이
+> 1) 텍스트로 써주시거나, 
+> 2) 화장실 or 담배 한대 피시면서, 자신의 생각을 휴대폰으로 녹음해 주시거나,
+> 3) 펜으로 생각을 종이에 그려서 휴대폰으로 사진 찍어주시거나, 
+> 4) 아예 완성된 그림을 그려주시면 더욱 좋고요.
+>
+> 그 어떤 것이라도 제공해 주시면 사랑에 빠질것 같습니다 :-P
+>
+> 리눅스 커널은 3차 페이지 테이블 (PGD, PMD, PTE)를 사용합니다. 
+>ARM은 2차 페이지 테이블을 사용하기 때문에 PGD와 PTE를 사용하고, PMD는 단순히 PGD를 가리킵니다.
+>리눅스 가상메모리에 페이지 별로 dirty, young와 같은 H/W에서 지원하지 않는 플래그를 사용하므로.
+>이점을 보완하기 위하여 H/W 테이블과 리눅스 플래그가 담긴 리눅스 페이지 테이블을
+>사용합니다. 이것을 그림으로 그려보았습니다.
+<code>
+                                     +---------------------+ +   0
+                                     | Linux page table 0  |
+                                     +---------------------+ +1024
+                                     | Linux page table 1  |
+|-----------------+-------------+    +---------------------+ +2048
+| Linux entry [0] | H/W entry 0 |--> | H/W page table 0    |
+|                 +-------------+    +---------------------+ +3072
+|                 | H/W entry 1 |--> | H/W page table 1    |
+|-----------------+-------------+    +---------------------+ +4096
+
+                                     +---------------------+ +   0
+                                     | Linux page table 0  |
+                                     +---------------------+ +1024
+                                     | Linux page table 1  |
+|-----------------+-------------+    +---------------------+ +2048
+| Linux entry [1] | H/W entry 0 |--> | H/W page table 0    |
+|                 +-------------+    +---------------------+ +3072
+|                 | H/W entry 1 |--> | H/W page table 1    |
+|-----------------+-------------+    +---------------------+ +4096
+</code>
+>
+>1차 페이지 테이블(PGD)의 엔트리는 8Byte를 사용하고, 두개의 H/W 엔트리를 가지고
+>있습니다. 즉 4096개에서 2048개로 줄어들었지만 메모리에 저장된 1차 페이지 테이블의
+>구조가 바뀐것은 아닙니다. 2차 페이지 테이블은 리눅스 페이지 테이블 2개가 있고,
+>이어서 2개의 H/W 페이지 테이블이 위치합니다.
+>
+> 정리하면, 
+> 논리적   접근 (리눅스 커널) : PGD (2048 entry), PTE (512 entry)
+> 하드웨어 접근 (MMU)        : PGD (4096 entry), PTE (256 entry)
+> page size는 4kB로 같음.
+>
+>
+> descriptor와도 연결되면 더욱 완벽해 질 것 같습니다 ^_^ FIXME
+>
+> {{ :스터디:figures:10차_armc:29주차:small_page.png?direct |}}
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 12) flush_pmd_entry()의 경우 clean_pmd_entry()와 다르게, dsb가 포함되는데 왜 사용할까요? **  </typo>
+<code>
+static inline void flush_pmd_entry(void *pmd)
+{
+        const unsigned int __tlb_flag = __cpu_tlb_flags;
+        
+        tlb_op(TLB_DCLEAN, "c7, c10, 1  @ flush_pmd", pmd);
+        tlb_l2_op(TLB_L2CLEAN_FR, "c15, c9, 1  @ L2 flush_pmd", pmd);
+
+        if (tlb_flag(TLB_WB))
+                dsb();
+}               
+
+static inline void clean_pmd_entry(void *pmd)
+{
+        const unsigned int __tlb_flag = __cpu_tlb_flags;
+                
+        tlb_op(TLB_DCLEAN, "c7, c10, 1  @ flush_pmd", pmd);
+        tlb_l2_op(TLB_L2CLEAN_FR, "c15, c9, 1  @ L2 flush_pmd", pmd);
+}
+</code>
+----
+> 녹음파일에 memory에 업데이트 하기 위함이다 라는 말이 들리던데, flush(변기의 물을 내리다)는 말 그대로 버리는것 아닌가요?
+> 제가 잘못 이해하고 있는건지, 녹음 파일을 잘못들은건지 좀 혼란스럽네요. 수정 부탁 드립니다. FIXME
+> 
+>
+> 일단 용어부터 다시 remind합니다.
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130713 | 12주차]]에서 언급했던 dsb()와 cache 용어입니다.
+>>
+>> DSB명령을 통해서 ” write buffer에 있는 값을 다 내보내겠다” 라는 의미이다.
+>> 이 동작을 하는 이유는 1) bootloader가 cache에 값을 기록했을수도 있고,
+>> 2) cache가 off되어 있더라도, write buffer 상에 남아 있을 수 가 있어서 drain을 통해 write buffer를 내보내는 동작이다.
+>> 
+>> A팀의 용어 정리입니다. 참고하세요.
+>> flush : dirty 비트를 0으로 초기화(일반적인 의미의 clean에 가까움)
+>> clean : dirty 비트가 1인 데이터를 메모리에 반영
+>> drain : 클린을 위해 캐시 버퍼에 있는 내용을 메모리에 반영
+>> 
+>
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130817 | 17주차]] 2-4) 개념정리도 다시 remind 합니다.
+>
+>>
+>> **DMB - data memory barrier operation**
+>> (DMB 이후의 명시적인 메모리 액세스를 시작하기 전에, DMB 이전의 모든 명시적인 메모리 액세스를 완료하도록 한다.)
+>> 
+>> **DSB - data synchronization barrier operation**
+>> (DSB 이전의 모든 명령들을 완료하도록 한다.)
+>> 
+>> **ISB - Instruction synchronization barrier operation**
+>> (파이프라인을 비워서, ISB 이후의 모든 명령들이 캐시나 메모리로부터 새로 fetch되도록 한다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 13) LPAE가 아닌데, pfn을 32bit이상 mapping 가능한가요?  **  </typo>
+<code>
+#ifndef CONFIG_ARM_LPAE 
+        /*
+         * Catch 36-bit addresses
+         */
+        if (md->pfn >= 0x100000) {
+                create_36bit_mapping(md, type);
+                return;
+        }
+#endif
+</code>
+----
+> LPAE는 애초에 3level paging으로 40b addressing을 지원하고, LPAE가 아닌 경우인 2level에서도 36b addressing을 지원합니다.(v6이후 또는 일부 Xscale에서만 지원)
+>
+> 문제는 2level의 경우 기본적으로 32b였고 36b를 사용하고자 하는 경우 supersection(16MB)이라는 개념을 사용해야만 한다는 점입니다. 이 때 alloc_init_pud에서 처리할 수도 있겠으나 supersection은 잘 사용하지 않는 예외적인 경우로 간주하여 별도로 처리해주는 것으로 보입니다.
+>
+> 정리하면 
+> 1. LPAE는 supersection이 필요없고,
+> 2. LPAE가 아닐 때도 36b addressing을 할 수 있는데 이 때 supersection이라는 개념을 써야한다.
+> 3. 해당 코드는 2의 경우에 대하여 별도의 루틴으로 처리한다.
+</WRAP>
+
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 2. setup_arch()->paging_init()->dma_contiguous_remap()  ** </typo>>
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) dma_contiguous_remap()는 왜 실행을 하지 않을까요? **  </typo>
+----
+> 결론부터 얘기하면, [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차 ]] 1-13)에서 공부했던 <wrap em>CMA(Contiguous Memory Allocation)를 사용하지 않기 때문</wrap>입니다.
+> 
+> CMA의 내용은 다음과 같았었습니다.
+>>
+>> CMA는 Contiguous Memory Allocation의 약자로 “연속 메모리 할당”을 의미하며 프로그램을 연속된 메모리 공간 내에 할당하는 기법입니다.
+>> 그러나 이 방법은 기억장치의 최대 메모리보다 할당될 프로그램의 용량이 더 크면 할당이 되지 않는다는 문제점이 있어서 초기 주기억장치 할당 방법으로 잠깐 사용했다가, (뭐 물론 도중에 Overlay 기법 등이 등장했었습니다만) 요즘은 사용하지 않습니다.
+>> 
+>> 
+>> 근거를 찾기위한 자세한 경로는 다음과 같습니다.
+>>
+>> **① dma_mmu_remap_num 변수의 값이 0**
+>> dma_contiguous_remap()이 실행하려면 <fc #0000FF>dma_mmu_remap_num값이 있어야 하는데, 현재 0</fc>으로 되어 있습니다. 
+>> 
+>> <code c>
+void __init dma_contiguous_remap(void)
+{
+        int i;
+
+        for (i = 0; i < dma_mmu_remap_num; i++) {
+                phys_addr_t start = dma_mmu_remap[i].base;
+                phys_addr_t end = start + dma_mmu_remap[i].size;
+
+</code>
+>> dma_mmu_remap_num가 왜 0으로 되어 있는지 따라가 봅니다.
+>>
+>> **② dma_contiguous_early_fixup()에서 dma_mmu_remap_num 변수 수정**
+>> dma_contiguous_early_fixup()함수가 dma_mmu_remap_num 변수를 수정하고 있습니다.
+>> 
+>> 
+>> <code c>
+void __init dma_contiguous_early_fixup(phys_addr_t base, unsigned long size)
+{
+        dma_mmu_remap[dma_mmu_remap_num].base = base;
+        dma_mmu_remap[dma_mmu_remap_num].size = size;
+        dma_mmu_remap_num++;
+}
+</code>
+>> 그럼 dma_contiguous_early_fixup()는 어디서 호출 하는지 따라가 봅니다.
+>>
+>> **③ dma_declare_contiguous()에서 dma_contiguous_early_fixup() 호출**
+>> "drivers/base/dma-contiguous.c"의 dma_declare_contiguous()가 호출함을 확인하였습니다.
+>>
+>> <code c>
+int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
+                                  phys_addr_t base, phys_addr_t limit)
+{
+        struct cma_reserved *r = &cma_reserved[cma_reserved_count];
+        phys_addr_t alignment;
+
+        ...
+
+        /* Architecture specific contiguous memory fixup. */
+        dma_contiguous_early_fixup(base, size);
+</code>
+>> 마지막입니다. dma_declare_contiguous()를 어디서 호출하는지 가봅시다.
+>>
+>> **④ dma_contiguous_reserve()에서 dma_declare_contiguous() 호출 **
+>> 어디서 많이 본 함수죠? setup_arch()-> arm_memblock_init() 에서 CMD 메모리가 존재하면 reserved 하는 함수입니다. 여기서 우리는 사용하지 않기 때문에 넘어갔습니다.
+>>
+>> <code c>
+void __init dma_contiguous_reserve(phys_addr_t limit)
+{
+        phys_addr_t selected_size = 0;
+        pr_debug("%s(limit %08lx)\n", __func__, (unsigned long)limit);
+        
+        if (size_cmdline != -1) {
+                selected_size = size_cmdline;
+        } else {
+#ifdef CONFIG_CMA_SIZE_SEL_MBYTES // CONFIG_CMA_SIZE_SEL_MBYTES=n
+                selected_size = size_bytes;
+#elif defined(CONFIG_CMA_SIZE_SEL_PERCENTAGE) // CONFIG_CMA_SIZE_SEL_PERCENTAGE=n
+                selected_size = cma_early_percent_memory();
+#elif defined(CONFIG_CMA_SIZE_SEL_MIN) // CONFIG_CMA_SIZE_SEL_MIN=n
+                selected_size = min(size_bytes, cma_early_percent_memory());
+#elif defined(CONFIG_CMA_SIZE_SEL_MAX) // CONFIG_CMA_SIZE_SEL_MAX=n
+                selected_size = max(size_bytes, cma_early_percent_memory());
+#endif  
+        }
+
+        // selected_size: 0
+        if (selected_size) {
+                pr_debug("%s: reserving %ld MiB for global area\n", __func__,
+                         (unsigned long)selected_size / SZ_1M);
+
+                dma_declare_contiguous(NULL, selected_size, 0, limit);
+        }
+};
+</code>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) 정규식을 공부하려 하는데, 어느 책이 좋을까요? **  </typo>
+----
+> pororo님에게 자극받으셨나 보군요... 
+>
+> 결론부터 얘기하면 책보다는 인터넷에 요약된것 몇개 보고 사용하는 것이 좋습니다.
+> 
+> 그래도 책을 보겠다고 하면, 한빛미디어에서 나온 "[[http://www.hanb.co.kr/book/look.html?isbn=89-7914-226-9 | 정규 표현식 완전 해부와 실습]]"이 좋습니다.
+>
+> {{ :스터디:figures:10차_armc:29주차:m_1226m.gif?direct |}}
+> 참고로 VIM은 정규식이 detail한 것까지 전부 가능하고, perl, ruby, phyton도 가능합니다.
+>
+> 가장 많이 사용하는 정규식이 치환인데, VIM에서 다음과 같이 사용합니다.
+> <code c>
+:(시작줄),(끝줄)s/찾을패턴/바꿀스트링/옵션
+
+
+- 시작줄, 끝줄 : 바꾸기를 할 범위를 행번호로 지정. "."는 현재 커서가 있는 줄. "$" 는 제일 마지막 줄을 의미
+- 찾을 패턴, 바꿀 스트링 - 말 그대로 전자를 찾아 후자로 치환한다. 
+- 옵션 :
+g : global - 한 줄에 패턴이 여러 번 나오면 모두 바꾼다. 지정하지 않으면 첫번째 패턴만 치환
+i : ignore case - 대소문자 구분을 하지 않는다.
+c : confirm - 검색된 모든 문자열에 대해서 바꿀지 말지를 물어본다.
+</code>
+> **예제**
+> <code c>
+5,10s/a/b/     - 5번째 줄부터 10번째 줄까지 각 줄의 첫번째 "a" 를 "b" 로 바꾼다.
+:.,.+10s/a/b/g  - 현재 줄부터 (현재 행번호+10)번째 줄까지 모든 "a" 를 "b" 로 바꾼다.
+:1,$s/a/b/c     - 첫번째 줄부터 마지막 줄까지 (즉 문서 전체) 각 줄의 "a" 를 "b" 로 바꾸되, 사용자에게 확인을 받는다.
+:%s/a/b/gi      - 역시 문서 전체에서 "a" 와 "A" 를 "b" 로 바꾼다.
+:%s/Hello/Good Morning/g - 당연히... 두 글자 이상의 문자열도 검색 및 치환이 가능하다.
+</code>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) cscope에서 함수나 심볼을 빠르게 검색할 수 있는 방법? **  </typo>
+----
+> **A) plugin을 사용하는 방법**
+>
+> 아래의 링크에서 cscope_maps.vim 를 받아서 $HOME 폴더의 .vim/plugin에 받은 파일을 넣으면 됩니다.
+> [[http://cscope.sourceforge.net/cscope_maps.vim | cscope_maps]]
+>
+> 사용법은 찾고자 하는 심볼위에 커서를 놓고 ctrl + \ 누른 이후에 c, d, e, f, g, i, s, t 키를 누르면 됩니다.
+>
+>       c: 이 함수를 부르는 함수들 찾기
+>       d: 이 함수에 의해 불려지는 함수들 찾기
+>       e: 이 egrep 패턴 찾기
+>       f: 이 파일 찾기
+>       g: 이 정의 찾기
+>       i: 이 파일을 포함하는 파일들 찾기
+>       s: 이 C 심볼 찾기
+>       t: 이 문자열 찾기 
+>
+>
+> **B) plugin 없이 buffer를 이용하는 방법**
+>
+> text 를 command창에 복사하고 싶으면 command에서 Ctrl+R 입력후 버퍼를 지정하는 방법입니다.
+> 예를 들어 yw로 단어를 copy한 경우 보통 *나 +버퍼에 들어 있습니다.
+>
+> :<Ctrl+R>* 순으로 입력하면 *버퍼의 내용이 paste됩니다.
+> 따라서 foo라는 심볼 복사후 :cs f s <Ctrl+R>* 이렇게 입력하면 자동으로 :cs f s foo와 같이 입력됩니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) vi에서 한줄만 블럭지정 어떻게 하나요? **  </typo>
+----
+> shift+v: 라인단위 블럭 지정
+> {{ :스터디:figures:10차_armc:29주차:shiftv.png?direct |}}
+>
+> ctrl+v: 열단위 블럭 지정
+> {{ :스터디:figures:10차_armc:29주차:ctrlv.png?direct |}}
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 3. setup_arch()->paging_init()->devicemaps_init()  ** </typo>>
+\\
+{{ :스터디:figures:10차_armc:29주차:devicemaps_init.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) round_up() 계산방법? **  </typo>
+<code c>
+static phys_addr_t __init memblock_alloc_base_nid(phys_addr_t size,
+                                        phys_addr_t align, phys_addr_t max_addr,
+                                        int nid)
+{
+        phys_addr_t found;
+
+        if (WARN_ON(!align))
+                align = __alignof__(long long);
+
+        /* align @size to avoid excessive fragmentation on reserved array */
+        size = round_up(size, align);
+
+        found = memblock_find_in_range_node(0, max_addr, size, align, nid);
+        if (found && !memblock_reserve(found, size))
+                return found;
+
+        return 0;
+}
+</code>
+----
+> round_up 매크로는 다음과 같이 정의 되어 있습니다.
+> <code c>
+#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
+
+#define __round_mask(x, y) ((__typeof__(x))((y)-1))
+</code>
+>
+> x=1999, y=10 이라고 가정하고 계산해 보면
+> <fc #0000FF>round_up(1999,10) = 2000</fc>의 결과값이 나옵니다. 결국 <fc #0000FF>뒷자리 숫자는 유효숫자</fc>가 되어서 올림을 수행합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) memblock_find_in_range_node()함수의 역할이 무엇인가요? **  </typo>
+<code c>
+phys_addr_t __init_memblock memblock_find_in_range_node(phys_addr_t start,
+                                        phys_addr_t end, phys_addr_t size,
+                                        phys_addr_t align, int nid)
+{
+    ...
+
+        for_each_free_mem_range_reverse(i, nid, &this_start, &this_end, NULL) {
+                this_start = clamp(this_start, start, end);
+                this_end = clamp(this_end, start, end);
+
+                if (this_end < size)
+                        continue;
+
+                cand = round_down(this_end - size, align);
+
+                if (cand >= this_start)
+                        return cand;
+        }
+        return 0;
+}
+</code>
+----
+> 결론부터 얘기하면 size(8K)만큼의 영역을 할당하기 위해서 물리메모리 lowmem의 끝 영역(0x6f80_0000)부터 내려오면서, reserved 영역과 겹치지 않는 주소를 계산하는 것입니다.
+>
+> 얼핏보면 복잡해 보이긴 하지만, 하나하나 뜯어보면 의외로 간단한 코드 입니다.
+>
+> <wrap em><typo fs:16px;>A) for_each_free_mem_range_reverse 구문 해석</typo></wrap> 
+> 
+> for_each_free_mem_range_reverse는 다음과 같이 구성되어 있습니다. 
+> <code c>
+#define for_each_free_mem_range_reverse(i, nid, p_start, p_end, p_nid)  \
+        for (i = (u64)ULLONG_MAX,                                       \
+             __next_free_mem_range_rev(&i, nid, p_start, p_end, p_nid); \
+             i != (u64)ULLONG_MAX;                                      \
+             __next_free_mem_range_rev(&i, nid, p_start, p_end, p_nid))
+</code>
+> 간단하게 i=0xffffffff_ffffffff 을 넣고, <nowiki> __next_free_mem_range_rev </nowiki>를 통해 8K(PAGE_SIZE*2)의 영역이 있는지 검색하는 것인데, 중간에 reserved 영역이 있으면 곤란하니까 그걸 check하는 것입니다.
+>
+> 아래와 같이 정렬하면, for문이 조금 더 눈에 잘 들어오겠죠?
+> <code c>
+for (i = (u64)ULLONG_MAX, __next_free_mem_range_rev(&i, nid, p_start, p_end, p_nid); 
+     i != (u64)ULLONG_MAX;                                      \
+     __next_free_mem_range_rev(&i, nid, p_start, p_end, p_nid))
+</code>
+> 여기서 종료 조건은 i가 (u64)UULONG_MAX가 아니면이고, i값은 memory를 할당할 영역을 찾으면 변경됩니다.
+>
+>
+> <wrap em><typo fs:16px;>B) <nowiki> reserved 영역을 피하여 memory 할당 영역 계산 </nowiki> </typo></wrap> 
+>
+> 그럼 위에서 얘기한 i, p_start(여기서는 *out_start), p_end(*out_end)가 어떻게 바뀌는지 염두해 두고 갑시다.
+> 
+> {{ :스터디:figures:10차_armc:29주차:next_free_mem_range_rev2.png?direct |}}
+> **①:** memblock_type은 지겹게 많이 보셨죠? 아래 그림과 같이 구조체로 되어 있었습니다.
+> {{ :스터디:figures:10차_armc:29주차:memblock.png?direct |}}
+> 그리고 기존에 선언한 memblock의 memory와 reserved의 주소값을 불러옵니다.
+>
+> 다 아시겠지만, memory는 물리메모리의 regions를 나타내고, reserved는 dtb, kernel 이미지등 설정하였습니다. reserved의 경우 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차]] arm_memblock_init()에서 공부하였고, reserved의 flow는 다음과 같았습니다. 
+> {{ :스터디:figures:10차_armc:29주차:arm_memblock_init.png?direct&400 |}}
+> <fc #0000FF>최종 reserved 된 부분은 kernel, dtb, initrd, page table 총 4개</fc> 입니다.(dtb reserve map은 현재 타겟에서는 아니라고 합니다.) 
+> 여기서 kernel과 page table은 인접 영역에 있으므로 총 reserved.regions는 3개라고 예상됩니다. 아래 그림은 물리메모리에서 할당된 memory와 reserved 영역을 나타냅니다.
+> (dtb와 initrd의 경우 위치를 알 수 없지만, 설명을 위해 다음 그림과 같이 위치해 있다고 가정합시다.)
+> 
+> {{ :스터디:figures:10차_armc:29주차:memory_reserved3.png?direct&400 |}}
+> 
+> **②:** 이제 mi와 ri값을 연산합니다. 처음 loop에서는 이런 연산이 의미가 없지만, 재 호출할때는 ri는 64비트에서 상위비트, mi는 하위비트에 저장해 두기 때문에 이와 같은 연산을 통해 다시 분리하는 과정입니다.
+> 여기서 mi는 memory index, ri는 reserved index입니다.
+>
+> **③:** 처음 수행하는 경우 i값이 (u64)ULLONG_MAX 였기 때문에 if문에 만족하여 들어가고, mi와 ri에 memory, reserved의 cnt값을 저장합니다. <fc #0000FF>cnt값은 regions의 개수</fc>를 뜻하므로, mem->cnt는 1개, rsv->cnt는 3개이며, 결과적으로 mi=0, ri=3이 저장됩니다.
+>
+> **④:** memory.regions의 수만큼 loop문을 반복하며 m_start, m_end에 memory.regions의 base, end값을 저장합니다.
+> {{ :스터디:figures:10차_armc:29주차:next_free_mem_range_rev_flow4.png?direct&400 |}}
+> 
+> **⑤:** nid와 MAX_NUMNODES 가 둘다 1이므로 우리는 여기는 그냥 넘어갑니다.
+>
+> **⑥:** 이제 ri값을 뒤에서 부터 검색하면서 내려 옵니다. [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차]]에서 regions 등록할 때 address 별로 정렬된다고 배웠고, 여기서는 for문이 ri를 감소시키면서 검색하므로, 가장 위의 address부터 검색하며 내려옵니다. 
+>
+> r_start는 가장 위에 있는 reserved.regions의 end값을 저장하고, 
+> r_end는 32bit 주소의 끝을 가르킵니다.
+> {{ :스터디:figures:10차_armc:29주차:next_free_mem_range_rev_flow6.png?direct&400 |}}
+>
+> **⑦:** r_end가 m_start보다 작다면 여기서는 이미 ri가 mi를 지나쳤다고 생각하고, 바로 loop문을 빠져 나갑니다.
+>
+> **⑧:** 이제 8K(PAGE_SIZE*2) memory를 할당할 out_start와 out_end값을 각각 저장합니다.
+> 여기서 out_start는 memory의 start와 reserved의 start중 최대값으로 구하고,
+> out_end는 memory의 end와 reserved의 end중 최소값으로 정합니다.
+> {{ :스터디:figures:10차_armc:29주차:next_free_mem_range_rev_flow8.png?direct&400 |}}
+>
+> **⑨:** 이제 ri를 감소시키고, i값을 mi와 ri<<32의 값으로 수정합니다. 여기서 i값은 찾았기 때문에, 더이상 UULONG_MAX를 만족시키지 않아서 loop문은 1번만 반복하고 빠져나갑니다.
+>
+>
+> <wrap em><typo fs:16px;>C) candidate 주소 설정(8K가 할당될 부분)</typo></wrap> 
+> <code c>
+for_each_free_mem_range_reverse(i, nid, &this_start, &this_end, NULL) {
+        this_start = clamp(this_start, start, end);
+        this_end = clamp(this_end, start, end);
+
+        if (this_end < size)
+               continue;
+
+         cand = round_down(this_end - size, align);
+
+         if (cand >= this_start)
+               return cand;
+}
+</code>
+> 지금까지 reserved 영역을 피하여 할당할 주소를 계산하였고, start 주소는 out_start(this_start), end 주소는 out_end(this_end)에 저장하였습니다. 여기서는 clamp를 통하여 최소, 최대 할당 가능 address를 넘지 않도록 설정합니다. <fc #0000FF>clamp를 적용하는 영역은 start(0x0000_1000) ~ end(0x6f80_0000)</fc>입니다.
+> {{ :스터디:figures:10차_armc:29주차:cand_1.png?direct&400 |}}
+>
+> 이제 clamp를 통하여 최대 할당 가능 address를 설정하고, candidate를 할당할 start address를 구하기 위해서 this_end-size(여기서는 <fc #0000FF>0x6F7F_E000</fc> = 0x6f80_0000 - 0x0000_20000) 연산을 수행합니다. 
+>
+> 결국 <fc #0000FF>PAGE_SIZE*2가 할당될 주소는 0x6F7F_E000~0x6F80_0000</fc>이 되는 것이고, 그 <fc #0000FF>주소값을 cand</fc> 변수가 가지고 있습니다.(<wrap em>※ 나중에 <nowiki> __va </nowiki>로 변환됨</wrap>) 여기까지 계산된 최종 그림은 아래와 같고, cand 변수는 가상주소 변환을 통해를 vectors 포인터에 참조됩니다.
+> {{ :스터디:figures:10차_armc:29주차:cand_2.png?direct&400 |}}
+> {{ :스터디:figures:10차_armc:29주차:cand_3_2.png?direct&400 |}}
+>
+> 
+> 그런데 왜 첫 page에 할당되는 것은 피하려고 할까요? FIXME
+> <code c>
+     /* avoid allocating the first page */
+        start = max_t(phys_addr_t, start, PAGE_SIZE);
+</code>
+> 그리고 왜 PAGE_SIZE*2 를 할당 하는 것인가요? FIXME
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) clamp 매크로의 의미가 어떻게 되나요? **  </typo>
+<code c>
+#define clamp(val, min, max) ({                 \
+        typeof(val) __val = (val);              \
+        typeof(min) __min = (min);              \
+        typeof(max) __max = (max);              \
+        (void) (&__val == &__min);              \
+        (void) (&__val == &__max);              \
+        __val = __val < __min ? __min: __val;   \
+        __val > __max ? __max: __val; })
+
+</code>
+----
+> <fc #0000FF>typeof()</fc>는 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130831 | 19주차]] 2-1)에서 해당변수의 type을 반환하는 역할을 하는 매크로 함수라고 배웠습니다.
+>
+> <fc #0000FF><nowiki> (void) (&__val == &__min) </nowiki></fc>는 역시 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130831 | 19주차]] 2-2)에서 type이 같지 않으면 컴파일러가 컴파일 시, warning을 발생한다고 배웠습니다.
+>
+> 이제 남은 2줄을 가지고 val=0x6F80_0000, min=0x0000_10000, max=0x6F80_0000 라고 가정해 봅시다.
+> <code c>
+        __val = __val < __min ? __min: __val;   \
+        __val > __max ? __max: __val; })
+</code>
+>
+> 처음에는 val값과 min을 비교하여 <fc #0000FF>작으면 min을 val에 저장, 크거나 같으면 val값을 저장</fc>합니다.
+> 다음줄에서는 max와 비교해서 <fc #0000FF>크면 max를 반환, 작거나 같으면 val을 반환</fc>합니다.
+>
+> 결국 val값이 min보다 작아도 min을 유지하고, max보다 커도 max를 유지합니다.
+>
+> clamp라는 말이 신호나 파워쪽을 예로 들면, max와 min값을 제한한다는 의미로 생각하시면 됩니다.
+> {{ :스터디:figures:10차_armc:29주차:clamp.png?direct |}}
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) r[-1]의 연산이 가능한가요? 어떤 동작일까요?  **  </typo>
+<code c>
+for ( ; ri >= 0; ri--) {
+        struct memblock_region *r = &rsv->regions[ri];
+     
+        phys_addr_t r_start = ri ? r[-1].base + r[-1].size : 0;
+        phys_addr_t r_end = ri < rsv->cnt ? r->base : ULLONG_MAX;
+    ...
+</code>
+----
+> 네 정상적인 C문법입니다. 단순히 *(p-1)와 같은 기능입니다.
+>
+> 간단하게 test code 보시면 이해가 더욱 빠를 것입니다.
+> <code c>
+#include <stdio.h>
+
+int test[5]={10, 20, 30, 40, 50};
+
+int main(){
+
+        int *p; 
+
+        p=test;
+        p +=3;
+
+        printf("test[3]=%d, test[-1] = %d, test[-2]=%d\n", *p, p[-1], p[-2]);
+
+        return 0;
+}
+</code>
+> **Result:** 
+> <code c>
+test[3]=40, test[-1] = 30, test[-2]=20
+</code>
+> 전 몰랐는데.... 오늘도 C언어 문법 하나 배우고 갑니다 LOL (커널 공부하러 와서 C문법 왕창 배우고 가네요)
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) local로 extern을 선언하면 어떻게 되는 건가요? 일반적으로 이렇게도 사용하나요?  **  </typo>
+<code c>
+void __init early_trap_init(void *vectors_base)
+{
+        unsigned long vectors = (unsigned long)vectors_base;
+        extern char __stubs_start[], __stubs_end[];
+        extern char __vectors_start[], __vectors_end[];
+        unsigned i;
+
+        vectors_page = vectors_base;
+</code>
+----
+> 이렇게 많이 사용합니다. 다른곳에서 사용하지 않는다는 가정이 있으면, 이 파일에서는 이 함수만 사용한다는 의미로 사용합니다.
+> 그리고 이렇게 하는 것이 지역성이 좋습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) <nowiki> __vectors_start </nowiki>는 vmlinux.lds.S에 다음과 같이 정의되어 있는데 무슨 의미인가요?  **  </typo>
+<code>
+ memcpy((void *)vectors, __vectors_start, __vectors_end - __vectors_start);
+</code>
+<code>
+        __vectors_start = .;
+        .vectors 0 : AT(__vectors_start) {
+                *(.vectors)
+        }
+        . = __vectors_start + SIZEOF(.vectors);
+</code>
+----
+> 단순히 vector 0번에다가 넣는 다는 뜻입니다.
+> AT는 LD 메뉴얼에 존재합니다.
+>
+> FIXME
+</WRAP>
+</box>
+
+
+
+\\
+\\
+\\
+

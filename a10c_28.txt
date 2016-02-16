@@ -1,0 +1,986 @@
+==== 28주차(2013.11.02) ====
+<box center round blue 95% | <typo fs:18px;> ** 1. setup_arch()->paging_init()->build_mem_type_table()  ** </typo>>
+\\
+{{ :스터디:figures:10차_armc:28주차:build_mem_type_table3.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) mem_types[]에 존재하는 define의 내용 및 설정값의 의미를 짚고 넘어가야 할 것 같습니다. **  </typo>
+<code c>
+        [MT_DEVICE] = {           /* Strongly ordered / ARMv6 shared device */
+                .prot_pte       = PROT_PTE_DEVICE | L_PTE_MT_DEV_SHARED |
+                                  L_PTE_SHARED,
+                .prot_l1        = PMD_TYPE_TABLE,
+                .prot_sect      = PROT_SECT_DEVICE | PMD_SECT_S,
+                .domain         = DOMAIN_IO,
+        },   
+        [MT_DEVICE_NONSHARED] = { /* ARMv6 non-shared device */
+                .prot_pte       = PROT_PTE_DEVICE | L_PTE_MT_DEV_NONSHARED,
+                .prot_l1        = PMD_TYPE_TABLE,
+                .prot_sect      = PROT_SECT_DEVICE,
+                .domain         = DOMAIN_IO,
+        },   
+        [MT_DEVICE_CACHED] = {    /* ioremap_cached */
+        },   
+        [MT_DEVICE_WC] = {      /* ioremap_wc */
+        },   
+        [MT_UNCACHED] = {
+        },   
+        [MT_CACHECLEAN] = {
+        },   
+#ifndef CONFIG_ARM_LPAE
+        [MT_MINICLEAN] = {
+        },   
+#endif
+        [MT_LOW_VECTORS] = {
+        },   
+        [MT_HIGH_VECTORS] = {
+        [MT_MEMORY] = {
+        },
+        [MT_ROM] = {
+        },
+        [MT_MEMORY_NONCACHED] = {
+        },
+        [MT_MEMORY_DTCM] = {
+        },
+        [MT_MEMORY_ITCM] = {
+        },
+        [MT_MEMORY_SO] = {
+        },
+        [MT_MEMORY_DMA_READY] = {
+        },
+</code>
+
+
+----
+> 위의 각 device별 값들은 고정값이 아니라, 기술이 발전하면서 계속 바뀌게 되어 있습니다. 그리고 ARM에서는 이렇게 설정하지만, Intel에서는 또 다른 설정으로 가능합니다. 
+>
+> 따라서 일단 스터디 목적을 고려하면, 현재는 이러한 설정등을 하고 넘어가는구나 라고 보면 될것 같습니다. 어차피 나중에는 이 속성들은 대부분 사용할 일이 있을 것입니다.
+>
+>
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차]] 2-8)에 대략 언급하였지만, 설명이 너무 빈약하여 큰 특징을 갖는 속성만 다시 정리합니다.
+>
+> 가장 기본적인 속성은 크게 4가지로 다음과 같습니다.
+>
+> <wrap em><typo fs:16px;>1) Device(Strongly ordered)</typo></wrap>
+>>
+>> Strongly Ordered로 설정된 메모리나 장치는 <wrap em>읽기, 쓰기 동작을 수행한 순서와 횟수를 보장</wrap>해야 합니다. 따라서 Strongly Ordered로 설정된 메모리나 장치는 메모리 접근을 시작한 이후부터는 그 수행이 끝날 때까지 중간에 실행을 멈출 수 없습니다.
+>>
+>> 그리고 AXI로 연결된 주변 장치도 이와 동일하게 동작하기 때문에 인터럽트 지연 시간을 최소화하기 위해서는 Strongly Ordered로 설정된 메모리나 장치, AXI 인터페이스에 연결된 주변 장치에 대해서는 멀티워드(multiword) 로드/스토어(load/store) 명령을 되도록이면 사용하지 않는 것이 좋습니다.
+>>
+>> Strongly-ordered의 경우 우리가 제어하는 IP의 register가 해당됩니다.
+>> 예를들어 EtherNET이라고 가정하면 driver에 해당하는 register 영역은 strongly-ordered로 하고, TX나 RX는 bufferable, cacheable로 합니다.
+>> (Ref.:[[https://kldp.org/node/124651 | ARM Architecture 이야기 #1]])
+>
+> <wrap em><typo fs:16px;>2) Bufferable</typo></wrap>
+>> Bufferable은 <wrap em>Page의 data가 Write buffer에 write</wrap>될 수 있고 보통 main memory보다 빠른 동작을 하지만, <wrap em>order는 보장하지 않습니다.</wrap>
+>>
+>> CPU가 볼때 현재 DMA만 있다고 가정해 봅시다. 이 경우에는 하나의 device만 관여하기 때문에 order의 문제가 없습니다.
+>> 이제 EtherNET이 추가 되었다고 가정해 봅시다. 그럼 당연히 하드웨어적으로는 칩상의 위치가 다를 것입니다. 이 경우 당연히 latency의 차이가 있기 때문에 order의 차이가 존재합니다. 
+>>
+>> 그럼 order의 차이가 어떤 문제점을 발생시킬 수 있을까요?
+>> 다음 그림은 우리와 같이 한 보드안에 칩이 존재하는 경우는 아니고, 중앙 서버에서 데이터를 주고 받는 경우입니다.
+>> 위에서 설명한 바와 같이 중앙서버를 CPU, DMA를 Larry, EtherNET을 Sergey라고 가정해 봅시다. (여자 캐릭터가 없어서 죄송합니다.)
+>> {{ :스터디:figures:10차_armc:28주차:bufferable_ex1.png?direct |}}
+>> 
+>> 이 경우 다음과 같은 프로그램을 실행한다고 가정하면, 위의 꼬마는 y값, 아래 꼬마는 x값이 제대로 update가 되지 않아서 데이터가 꼬이게 됩니다. 그냥 x, y값 가지고 뭐 그렇게 난리냐 할수 있겠지만, 은행 계좌의 잔액 정보같은 데이터라면 중요할 수 있을것입니다.
+>> {{ :스터디:figures:10차_armc:28주차:bufferable_ex2.png?direct |}}
+>
+> <wrap em><typo fs:16px;>3) Cacheable Write-Through</typo></wrap>
+>> Cacheable은 page내의 data가 cache 될 수 있음을 의미합니다. 여기서 cache의 동작은 Write-Through로 동작합니다.
+>>
+>
+> <wrap em><typo fs:16px;>4) Cacheable Write-Back</typo></wrap>
+>> 위와 똑같지만, cache의 동작이 Write-Back으로 동작합니다.
+>>
+> 
+> 위의 4가지 기본 설정에 추가하여, processor간 shared 속성을 설정할 것이냐가 결정됩니다.
+> L1 cache에 data가 존재한다고 하여, L2 cache에도 반드시 data가 존재할 필요는 없습니다. 하지만 shared는 L1에 data가 존재하면, L2에도 data가 존재하여 processor간 data를 share할 수 있습니다.
+>
+> ARM은 L1, L2 따로 설정이 가능하며, 이 경우 L1은 WT, L2는 WB로 설정하여 processor간 shared data를 공유할 수 있습니다.
+> 나머지는 snooping unit이 처리합니다.
+>
+> ARM의 mem_types 설정의 동작을 자세한 분석을 하고 싶은 경우
+> 1. arch/arm/mm/proc-v7-2level.S의 PRRR, NMRR 값 및 그 위의 주석
+> 2. arch/arm/include/asm/pgtable-2level-hwdef.h의 PMD_SEC_UNCACHED등의 값
+> 3. arch/arm/mm/mmu.c의  build_mem_type_table()에서 (cr & CR_TRE)
+> 4. AARM B3.8.3 Short-descriptor format memoryregion attributes,with TEX remap
+> 을 교차 참고할 것
+> - 큰 그림은 arch/arm/mm/mmu.c의 mem_type 선언에서는 arch별 remap과 no-remap경우의 공통사항만 저장하고 arch에 따라 remap 여부 등에 따라 해당 table을 update한다.
+> - WC는 Write Combining의 의미이며 기본 CB 설정으로는 지원불가. ARMv6이후부터 확장된 memory attribute (TEXCB)에서 uncached normal memory라는 것을 통해 cache없이 combining을 지원
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) Cache protocol 토론을 하였는데, MSI, MESI, MOESI가 무엇인가요? **  </typo>
+----
+> MSI, MESI, MOESI는 cache coherency protocol입니다. 현재 study에서 다뤄야 할 이슈인지는 모르겠지만, 그래도 혹시 몰라서 정리하겠습니다.
+>
+> Cache coherency란 공유 메모리 시스템에서 각 클라이언트(혹은 프로세서)가 가진 로컬 cache 간의 일관성(coherency)을 의미한다. cache간의 coherency가 필요한 이유는 데이터 불일치(data inconsistency)다.
+>
+> 데이터 불일치의 원인은 크게 다음과 같이 3가지로 나눌 수 있다.
+> - 변경 가능한 데이터의 공유
+> - 입출력 동작
+> - 프로세스 마이그레이션(migration)
+>
+>
+> 이해를 돕기 위해 가장 대표적인 경우의 그림을 예로 들어보자.
+>
+> <wrap em><typo fs:14px;> 1) 초기상태 </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:cache_1.png?direct&400 |}}
+>> 
+>> CPU가 2개 있는 시스템에, 각자의 CPU가 바라볼 수 있는 cache가 1개씩 있다고 가정하자.(L2 cache 무시) 그리고 버스를 통해 공유 메모리가 존재한다.
+>> 현 단계에서는 아직 아무 동작도 하지 않았으므로, cache는 empty 상태이다.memory에는 num변수에 숫자가 저장되어 있다. 우리는 10차니까 10으로 하자.
+>>
+>
+> <wrap em><typo fs:14px;> 2) CPU #1이 data를 읽어옴 </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:cache_2.png?direct&400 |}}
+>>
+>> CPU #1이 data를 읽어오려 cache에 접근하면, 현재 cache에는 아무것도 없다. 따라서 miss를 발생하고, memory에 접근하여 숫자 10을 불러온다.
+>>
+>>
+> <wrap em><typo fs:14px;> 3-1) CPU #1이 data update를 함(Write-Back) </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:cache_3.png?direct&400 |}}
+>> 현재 cache policy가 WB라고 가정해보자. 그럼 CPU #1은 num이 cache line에서 나갈때까지 cache에서 불러서 사용할 것이다. 숫자를 1더해서 업데이트 했다고 가정하자. 그럼 CPU #1이 바라보는 num값은 11이다. 만약 이때 CPU #2가 memory에서 num값을 불러온다면 어떻게 될까?
+>>
+>
+> <wrap em><typo fs:14px;> 3-2) Write-Through </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:cache_4.png?direct&400 |}}
+>> Write-Through인 경우에도 이런 현상이 발생할 수 있다. 다시 2)번의 상태로 돌아가 CPU가 각각 num값을 불러왔다고 가정해 보자.
+>> 
+>> {{ :스터디:figures:10차_armc:28주차:cache_5.png?direct&400 |}}
+>> 여기서 CPU #2가 num값을 10 증가시켰다고 하면 cache에 num값은 20이 되고, WT이기 때문에 memory에도 바로 값을 반영하다.
+>> 만약 CPU#1이 여기서 memory값을 load한다면 문제가 없겠지만, 자기가 바라보고 있는 cache에서 num을 불러와 연산한다면 어떻게 될까? 이 역시 문제가 될 것이다.
+>>
+>
+> 이런현상을 <fc #0000FF>data inconsistency</fc>라고 하고, 해결하기 위한 방법이 여러가지 존재하지만 가장 대표적인 방법이 bus를 감시하는 <fc #0000FF>snoop controller</fc>를 이용하여 cache coherency protocol을 사용하는 것이다.
+> {{ :스터디:figures:10차_armc:28주차:block_snoop.png?direct |}}
+> 
+> Write-Through인 경우 cache의 data를 수정하는 즉시, memory에도 갱신이 되기 때무에 V(Valid), I(Invalid)상태만 가지고도 coherency를 유지할 수 있다. 하지만 Write-Back인 경우 cache의 값이 바뀌어도 memory에 갱신이 안되기 때문에, snoop contoller가 변경된 사실을 알려주어야 한다. 여기서 이용되는 방법이, MSI, MESI, MOESI 등이 있다.
+> 
+> 
+> <wrap em><typo fs:14px;> 1) MSI </typo></wrap>
+>>
+>> MSI 프로토콜(MSI protocol)은 멀티프로세서 시스템에서 사용되는 기초적인 cache 일관성 프로토콜이다.
+>> MSI 프로토콜은 메모리가 가질 수 있는 세 가지의 cache 상태를 정의하며, MSI라는 이름은 cache 상태의
+>> 이니셜에서 따온 것이다. MSI에서 메모리 블록이 가지는 상태는 다음과 같다.
+>>
+>> Modified: 블록이 cache에서 수정된 상태이다. 메모리는 수정되지 않았으며 cache만 수정되었기 때문에 cache와
+>> 메모리는 다른 데이터를 가지고 있다. 이러한 cache 블록을 cache에서 내보낼 때(evict) 메모리에 그 변경된 
+>> 내용을 반영해야 한다.
+>>
+>> Shared: 블록이 cache로 공유된 상태이다. cache와 메모리의 상태가 동일하기 때문에 해당 블록을 cache에서
+>> 내보낼 때 메모리에 쓰기 작업을 할 필요가 없다.
+>>
+>> Invaild: 블록이 유효하지 않은 상태이다. 해당 블록의 내용을 cache로 올리기 위해서는 메모리나 다른 cache에서
+>> 갱신된 내용을 확인할 필요가 있다.
+>> 프로그램이 M 상태나 S 상태에 있는 블록을 읽으려고 하는 경우에는 별다른 조치 없이 cache에서 읽을 수 있다.
+>> 만약 I 상태의 메모리 블록을 읽으려고 하는 경우에는 다른 cache에서 그 메모리를 M 상태로 가지고 있는지를
+>> 확인하며, 그에 따른 갱신 작업이 추가적으로 이루어진다.
+>>
+>
+> <fc #0000FF> 초기상태</fc>
+>>
+>> 텍스트로 써두면 다들 바빠서인지 잘 안읽는다는 사실을 알았기에, 상대적으로 덜바쁜(?) 제가 그림을 그려봅니다.
+>> (snoop controller는 생략 하겠습니다. 8-))
+>> {{ :스터디:figures:10차_armc:28주차:msi_0.png?direct&600 |}}
+>
+>
+> <fc #0000FF>① CPU #1이 READ 동작</fc>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:msi_1.png?direct&600 |}}
+>> CPU #1이 num값을 읽으려고 하면 아직 cache line에 존재하지 않으므로, cache miss를 발생한다. 그리고 이 data를 읽겠다는 snooping 신호를 bus로 보낸다. 아직 data를 갖고 있는 CPU가 없기에 memory에서 값을 읽어온다. cache line은 S상태가 된다.
+>>
+>
+> <fc #0000FF>② CPU #1이 WRITE 동작</fc>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:msi_2.png?direct&600 |}}
+>> CPU #1이 num변수에 10을 더하려고 한다고 가정하자. 값을 써야 하니 cache line 상태를 M으로 갱신하고, 동시에 다른 cache에게 해당 변수를 가지고 있으면 무효화 하라는 invalidate 신호를 전송한다. 하지만 아직 CPU #2는 아무것도 없기 때문에, 아무런 영향이 없다. 
+>>
+>> 현재 cache policy가 Write-Back 상태이기 때문에 cache line상태는 dirty  상태이고, evict 되면 memory에 반영된다. 현재까지는 싱글 코어와 다른점이 없다.
+>>
+>
+> <fc #0000FF>③ CPU #2가 READ 동작</fc>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:msi_3.png?direct&600 |}}
+>> CPU #2가 num값을 읽으려고 신호를 보낸다. 이제 CPU #1은 신호를 알아차리고, 자신이 cache line의 최신 값을 갖고 있음을 확인한다. 그리고 CPU #2에게 data를 전송하겠다는 신호를 보내고 cache line의 내용을 보낸다. 그림을 저렇게 그려서 헷갈리겠지만, 실제로는 memory를 통하지 않고 직접 cache 끼리 data를 전송한다. 이렇게 memory가 아닌 cache끼리 전송하는 것을 cache-to-cache transfer라고 한다. 
+>>
+>> 아직 CPU #1이 가지고 있는 memory에 반영하지 않았기 때문에, memory에 값을 반영하면 CPU #1, CPU #2, Memory가 모두 같은 값을 갖는다. M상태였던 CPU #1의 cache line은 M->S로 상태가 변경되고, CPU #2역시 S상태로 변경된다.
+>>
+>
+> <fc #0000FF>④ CPU #2가 WRITE 동작</fc>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:msi_4.png?direct&600 |}}
+>> CPU #2가 num값에 다시 10을 더한다고 가정한다. 하지만 ②에서 이미 공부했듯이, 값을 변경하려면 반드시 M으로 바꿔야 한다. 결국 num값이 바뀌면 다른 cache에서는 의미가 없기 때문에 invalidate신호를 bus에 보낸다. CPU #1은 신호를 받아 cache line을 invalidate 시킨다.(S->I) 이제 CPU #2는 M상태로 바뀌어서 num값에 10을 더한다.
+>>
+>
+> <fc #0000FF>⑤ 다시 CPU #1이 READ 동작</fc>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:msi_5.png?direct&600 |}}
+>> 자 이제 다왔다. CPU #1이 다시 num값을 읽는다고 해보자. 하지만 cache line이 현재 I상태이기 때문에, cache miss가 발생한다. 결국 ③의 과정을 다시 반복할 뿐이다. CPU #2가 현재 num의 최신값을 갖고 있으므로, memory와 CPU #1에 전송하고 S상태로 업데이트 한다.
+>>
+> 참 쉽죠잉~~~ LOL
+>
+>
+> <wrap em><typo fs:14px;> 2) MESI </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:MESI.png?direct&600 |}}
+>> MSI Protocol은 정확한 Cache Coherency를 보장하지만 버스에 신호를 보내는 횟수나 메모리 접근 횟수가 많아 비효율적이다. 프로세서 개수가 많아지면 이 Bus snooping 트래픽도 같이 증가해 병목 지점이 된다. MSI protocol의 가장 큰 단점은 아무도 데이터를 공유하지 않음에도 bus 트래픽이 낭비된다는 점이다. 
+>>
+>> 이를 해결하기위해 MESI protocol이 고안되었고, MESI는 MSI에서 E(Exclusive)상태를 추가한 것이다. MSI에서 Cache Line은 오직 자신만이 클린 상태(dirty = 0)이어도 공유된(S) 상태가 되어야 했다. S 상태에서 오직 혼자만이 깨끗한 데이터를 가지고 있는 상태를 분리하고 이를 E라고 한다. 그러면 S 상태는 반드시 두 개 이상의 Cache가 사본을 가지고 있을 경우가 된다. 
+>>
+>> MESI는 한번 해보세요~ <del>(절대 그리기가 귀찮아서는 아닙...)</del>
+>>
+>
+> <wrap em><typo fs:14px;> 3) MOESI </typo></wrap>
+>>
+>> {{ :스터디:figures:10차_armc:28주차:MOESI.png?direct&600 |}}
+>> 이 protocol은 AMD에서 사용된다. MESI의 경우 공유된 상태의 Cache Line은 반드시 깨끗해야 하고 메모리의 값과 일치해야 한다.
+>> 수정된(dirty = 1) Cache Line은 오직 한 프로세서만 공유할 수 있다. 하지만 여러 프로세서가 빈번히 공유 데이터를 쓴다면 매번 Dirty Cache Line이 메모리로 반영되는 부담이 있다. 그래서 MOESI protocol은 MESI protocol에서 O(owner) 상태를 추가해 Dirty Cache Line도 공유할 수 있게 허용하였다.
+>> 한 프로세서를 owner로 할당하고 Dirty Cache Line를 공유하고 최종적으로 owner 상태를 가진 프로세서가 write-back을 하도록 한다. 
+>>
+>> Modified : Not Shared, Dirty must be write back
+>> Owend    :     Shared, Dirty must be write back
+>> Exclusive: Not Shared, Clean
+>> Shared   :     Shared, Clean, no need to write back
+>> Invalid  : Invalid, may be clean or dirty
+>>
+>
+> <wrap em><typo fs:14px;> 4) MESIF </typo></wrap>
+>>
+>> 인텔은 MESI protocol에 Forward 상태가 추가된 MESIF protocol을 사용한다. F 상태의 Cache Line은 이 Cache Line을 달라는 요청에 응답할 수 있다.
+>>
+>
+> (Ref.: 프로그래머가 몰랐던 멀티코어 CPU 이야기)
+> (Ref.: [[http://people.freebsd.org/~lstewart/articles/cpumemory.pdf | What Every Programmer Should Know About Memory]]
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) DOMAIN의 개념을 어떻게 정의해야 할까요? 그리고 아래 code가 의미하는 것은 5번째 bit를 set하면 DOMAIN이 활성화가 된다는 뜻인가요? **  </typo>
+<code c>
+for (i = 0; i < ARRAY_SIZE(mem_types); i++) {
+        struct mem_type *t = &mem_types[i];
+        if (t->prot_l1)
+                t->prot_l1 |= PMD_DOMAIN(t->domain);
+        if (t->prot_sect)
+                t->prot_sect |= PMD_DOMAIN(t->domain);
+}
+</code>
+<code>
+#define PMD_DOMAIN(x)           (_AT(pmdval_t, (x)) << 5)
+</code>
+----
+> domain은 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130713 | 12주차]] 에서 한번 언급했던 내용입니다.
+> 먼저 그때 정리했던 내용을 remind 합시다.
+>>
+>> domain 기능은 MMU에서 제공하며, 개별적 접근 권한을 갖도록 정의된 메모리 영역을 말한다.
+>> DACR(Domain Access Control Register)를 사용해 16개 까지의 domain을 지정할 수 있다.
+>>
+>> 추가로, 슈퍼 유저가 있어서 모든 영역을 다 보고 싶으면, domain을 manager로 설정하면 전부 볼 수 있을 것이다.
+>> iamroot 토론자료가 있으니 궁금하신 분은 더 보세요. [[http://www.iamroot.org/xe/index.php?mid=Kernel_8_ARM&page=4&document_srl=62127 | domain 과 AP 비트 필드를 이용한 메모리 접근 권한 제어]] (8차 ARM)
+>>
+> domain은 ARM에서 사용하는 개념입니다. 위에서도 언급하지만 총 16개의 domain을 지정 가능합니다.
+> 이해를 돕기위해서 특정 메모리 영역에 A를 두었다고 가정해 봅시다. 
+> 여기서 해당 영역을 invalidate한다고 하면 page table을 다 변경하는 것이 아니라, domain만 바꿔서 성능을 향상 시킬 수 있습니다. 
+>
+> 리눅스는 보통 Kernel, IO, User 이렇게 3가지의 domain이 존재합니다.  
+> <code c>
+// arch/arm/include/asm/domain.h
+#ifndef CONFIG_IO_36
+#define DOMAIN_KERNEL 0
+#define DOMAIN_TABLE  0
+#define DOMAIN_USER 1
+#define DOMAIN_IO 2
+#else
+...
+#endif
+</code>
+>
+> PMD_DOMAIN 매크로에서 <nowiki> ((x) << 5)</nowiki>의 이유는 아래 그림과 같이 DOMAIN이 bit[8:5]에 위치해 있기 때문입니다.
+> {{ :스터디:figures:10차_armc:28주차:section_domain.png?direct |}}
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 2. setup_arch()->paging_init()->prepare_page_table()  ** </typo>>
+\\
+{{ :스터디:figures:10차_armc:28주차:prepare_page_table4.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) pmd_off_k()에서 pud_offset(), pmd_offset()은 하는 역할이 없어 보입니다. **  </typo>
+<code c>
+for (addr = 0; addr < MODULES_VADDR; addr += PMD_SIZE)
+        pmd_clear(pmd_off_k(addr));
+</code>
+<code c>
+static inline pmd_t *pmd_off_k(unsigned long virt)
+{
+        return pmd_offset(pud_offset(pgd_offset_k(virt), virt), virt);
+}
+</code>
+<code c>
+static inline pud_t * pud_offset(pgd_t * pgd, unsigned long address)
+{
+        return (pud_t *)pgd;
+}
+</code>
+<code c>
+static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr) 
+{
+        return (pmd_t *)pud;
+}
+</code>
+----
+> 64bit 시스템의 경우 다음과 같이 4단계의 page table 구조를 갖습니다.
+> {{ :스터디:figures:10차_armc:28주차:pgd_pud_pmd_pte.png?direct |}}
+>
+> 현재 우리가 사용하는 system은 2단계의 page table만(PGD, PTE) 존재하고 PUD, PMD는 사용하지 않습니다. 따라서 pud_offset(), pmd_offset()은 단순히 page table의 주소만 return합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) asm 구문에서 "　"가 연속으로 붙어있는데, 이렇게 사용해도 다 인식 가능한가요? **  </typo>
+<code c>
+static inline void clean_pmd_entry(void *pmd)
+{
+        const unsigned int __tlb_flag = __cpu_tlb_flags;
+
+        tlb_op(TLB_DCLEAN, "c7, c10, 1  @ flush_pmd", pmd);
+        tlb_l2_op(TLB_L2CLEAN_FR, "c15, c9, 1  @ L2 flush_pmd", pmd);
+}
+</code>
+<code c>
+#define tlb_op(f, regs, arg)    __tlb_op(f, "p15, 0, %0, " regs, arg)
+</code>
+<code c>
+#define __tlb_op(f, insnarg, arg)                                       \
+        do {                                                            \
+                if (always_tlb_flags & (f))                             \
+                        asm("mcr " insnarg                              \
+                            : : "r" (arg) : "cc");                      \
+                else if (possible_tlb_flags & (f))                      \
+                        asm("tst %1, %2\n\t"                            \
+                            "mcrne " insnarg                            \
+                            : : "r" (arg), "r" (__tlb_flag), "Ir" (f)   \
+                            : "cc");                                    \
+        } while (0)
+</code>
+----
+> 위의 code는 asm으로 번역하면 다음 code와 같이 나타낼 수 있습니다.
+> <code asm>
+"mcrne " "p15, 0, %0, " "c7, c10, 1     @ flush_pmd"  
+</code>
+> "　"는 문자열로 인식하기 때문에, 붙어있어도 상관 없습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) <nowiki> __tlb_op </nowiki> 명령이 최근에 변경된것 같은데, 왜 이렇게 변경 되었을까요? **  </typo>
+<code c>
+#define __tlb_op(f, insnarg, arg)                                       \
+        do {                                                            \
+                if (always_tlb_flags & (f))                             \
+                        asm("mcr " insnarg                              \
+                            : : "r" (arg) : "cc");                      \
+                else if (possible_tlb_flags & (f))                      \
+                        asm("tst %1, %2\n\t"                            \
+                            "mcrne " insnarg                            \
+                            : : "r" (arg), "r" (__tlb_flag), "Ir" (f)   \
+                            : "cc");                                    \
+        } while (0)
+</code>
+----
+> 스터디 시간에 토의하였던 내용이 해당 code가 2013년 6월에 적용되어서, 왜 변경한 것인지 토론한것 아니었나요?
+> 우리가 검토했던 patch 내용: [[http://www.spinics.net/lists/linux-rt-users/msg10093.html | [PATCH 1/1] ARM mm: Fix RT life lock on ASID rollover]]
+>
+> 그런데 git blame으로 확인해 보니 [[https://github.com/ygpark/iamroot-linux-arm10c/commit/87067a935a174cf5e0b336d338a0ab535ffe199d | ARM: Optimize multi-CPU tlb flushing a little more]] 2012.02.04에 update 되었던 내용으로 보여집니다.
+> 
+> 전 그때 어떻게 토론 되었던건지 헷갈려서 일단 들은대로만 정리하겠습니다.
+> <wrap em>1) git blame 내용</wrap>
+>>
+>> 기존 tlb code를 컴파일러가 conditionalize하지 않기 때문에, 차선의 최적화 code를 생성함.
+>> <code c>
+ARM: Optimize multi-CPU tlb flushing a little more
+The compiler does not conditionalize the assembly instructions for
+the tlb operations, which leads to sub-optimal code being generated
+when building a kernel for multiple CPUs.
+
+We can tweak things fairly simply as the code fragment below shows:
+
+    17f8:       e3120001        tst     r2, #1  ; 0x1
+...
+    1800:       0a000000        beq     1808 <handle_pte_fault+0x194>
+    1804:       ee061f10        mcr     15, 0, r1, cr6, cr0, {0}
+    1808:       e3120004        tst     r2, #4  ; 0x4
+    180c:       0a000000        beq     1814 <handle_pte_fault+0x1a0>
+    1810:       ee081f36        mcr     15, 0, r1, cr8, cr6, {1}
+becomes:
+    17f0:       e3120001        tst     r2, #1  ; 0x1
+    17f4:       1e063f1        mcrne   15, 0, r3, cr6, cr0, {0}
+    17f8:       e3120004        tst     r2, #4  ; 0x4
+    17fc:       1e083f36        mcrne   15, 0, r3, cr8, cr6, {1}
+    
+    Overall, for Realview with V6 and V7 CPUs configured:
+
+   text    data     bss     dec     hex filename
+4153998  207340 5371036 9732374  948116 ../build/realview/vmlinux.before
+4153366  207332 5371036 9731734  947e96 ../build/realview/vmlinux.after
+
+Signed-off-by: Russell King <rmk+kernel@arm.linux.org.uk>
+</code>    
+>>
+>
+> <wrap em>2) patch 내용 </wrap>
+>>
+>> <wrap em>ASID rollover(overflow 개념으로 보면 될까요?) 에서 RT life lock 수정</wrap> 
+>>
+>> <fc #0000FF>i. ASID의 발생 배경</fc>
+>>>
+>>> 먼저 PID의 개념을 이해해야 합니다.
+>>> ARMv5 시절에 FCSE를 위해서 address를 32M or 16M(확실치 않음, 일단 16M로 가정)로 나누어서 사용했음
+>>> process가 바뀌면 address가 물리적으로 바뀌는데, kernel 입장에서는 16M만 변경되었습니다. 하지만 시대가 발전하면서 이제 GB단위로 사용을 하니, kernel에서는 용량이 작으니 의미가 없어져 버림
+>>> 
+>>> 그러다보니 이제 context switching시 invalidate해야 하는데, overhead가 상당한 단점이 존재함
+>>> 이 문제점을 해결하기 위해서 ASID(Address Space Identifier)을 고안하였음
+>>> 마찬가지의 이유로, Hypervisor에서는 VMID(virtual machine identifier)가 등장함
+>>>
+>>
+>> <fc #0000FF>ii. ASID(Address Space Identifier) 특징</fc>
+>>> 
+>>> ASID는 address를 분리하는 것이 아니라, cache에 tag를 다는경우 process ID같은 tag를 달아주자는 개념임.
+>>> ASID를 같이 이용하면, 더이상 cache flush를 할 필요가 없음. (해당 address의 어느 동작이다 라는것을 알 수 있어서 cache를 날릴 필요가 없음)
+>>>
+>>> CONTEXTIDR의 구조 (A.R.M. B4.1.36)
+>>> {{ :스터디:figures:10차_armc:28주차:contextidr.png?direct |}}
+>>
+>> <fc #0000FF>iii. patch code가 하는 역할</fc>
+>>> 
+>>> 일단 process ID는 하드웨어적인 것이 아니라, 소프트웨어 적으로 관리를 한다. 하드웨어 에서는 단순히 RW기능만 지원함.
+>>> cache 입장에서는 address 매칭(process-ASID)를 한다고 보면 됨
+>>>
+>>> cache 상에서 flush, clean 동작을 보면 크게 3가지로 다음과 같이 구분할 수 있음
+>>> - MVA에서 virtual address로 clean, flush동작
+>>> - cache에서 index number, way 수를 지정해서 가능
+>>> - cache 전체 clean, invalidate
+>>> 아키텍처나 벤더에 따라 모두 또는 일부를 지원
+>>>
+>>> 이제 ASID가 존재하니, 해당 ASID를 flush해야 하는데, 지금 보는 patch가 mva, asid로 하는 것임
+>>> 
+>>> 주석에서 보면 tlb flush로 되어 있지만, 실제로는 data cache를 clean해주는 역할을 함.
+>>> tlb flush를 하는 경우에 data cache clean은 당연한 것이고, tlb 자체를 flush 하는 경우가 필요하기도 함.
+>>> 
+>>> tlb 자체를 flush 해야 하는 경우
+>>>>
+>>>> data를 바꾸면 address가 바뀐건데, 해당 address를 다음부터 반영해야 하는데 이게 tlb에 올라온 address면 볼수가 없음.
+>>>> 그래서 강제로 invalidate 시켜서 여기 data를 clean하여 tlb가 볼 수 있도록 할 수 있음(reload 개념)
+>>>>
+>>>> tlb 메뉴얼을 보다보면, PoC, PoU개념이 등장함.
+>>>
+>>> <wrap em>결국 예전에는 address만 봐서 필요없었지만, 지금은 ASID가 나와서 해야 한다.</wrap>
+>
+> ASID가 8bit라서 작아보이지만, 현재 시스템에서는 충분히 가능하다.
+> LPAE의 경우 TTBR0에 들어가 있다.
+>
+> FIXME FIXME FIXME FIXME FIXME FIXME 
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) 위에서 언급한 FCSE, MVA, PoC, PoU의 재정리가 필요합니다. **  </typo>
+----
+> <typo fs:16px;><wrap em> 1) FCSE + MVA </wrap></typo>
+>>
+>> <wrap em>MVA(Modified Virtual Address)는 FCSE(Fast Context Switch Extension)와 관련된 용어</wrap>입니다. 따라서 FCSE를 먼저 이해해야 합니다. FCSE는 ARM System Developer's Guide 책을 봤을때 같이 공부하고 토론했던 개념입니다.
+>>
+>> 스터디 시간에 3개월 정도 되었다고 말씀 드렸는데, 6월달에 봤던 개념이네요~ 5개월 지났으니(?) 말씀하신대로 전혀 기억이 안날만 한가요? (그래도 아직 1년도 안지났는데... 이로써 우리 머리의 queue 용량이 5개월보다는 작다는걸 알았네요:-D, <del>그래도 stack이 아닌게 다행</del>)
+>>
+>> 제가 이해한 대로 정리하겠습니다. (일단 정리해두고 또 생각안나면 계속 자료 뒤적거리면서 복습합시다!)
+>> 자세한 내용은 "ARM System Developer's Guide 14.9절", "A.R.M, B2.2.6, Terms used in describing the maintenance operations", "A.R.M, Appendix J, FCSE" 보시면 될것 같습니다.
+>>
+>> 결론부터 얘기하면 <wrap em>FCSE는 ARMv7에서는 optional, ARMv7 Multiprocessing Extensions 에서는 사용하지 않는다</wrap> 입니다. 따라서 현재<fc #0000FF> 우리는 FCSE를 사용하지 않는다가 맞고, 어떤 개념인지만 파악</fc>하면 될것 같습니다.
+>>
+>>
+>> <fc #0000FF>**i. 기존 context switching의 문제점**</fc>
+>>>
+>>> 1번 프로세스와 2번 프로세스가 있다고 가정하고 시작합시다. (core가 1개인 시스템)
+>>>
+>>> 1번 프로세스가 현재 가상 메모리를 사용하고 있고, 속도 향상을 위해 cache와 TLB에 일정 범위를 저장하고 있습니다. 그런데 여기서 context switching이 발생하여 2번 프로세스가 활성화 되고 가상 메모리를 사용하려 합니다. 만약 1번 프로세스와 2번 프로세스가 사용하는 메모리가 아래 그림과 같이 중첩된다면 <fc #0000FF>cache와 TLB에 저장되어 있는 정보는 쓸모가 없기 때문</fc>에, flush를 해주어야 합니다.
+>>> {{ :스터디:figures:10차_armc:28주차:fcse_problem3.png?direct&400 |}}
+>>>
+>>> 원래 cache와 TLB 자체가 memory에서 load하는 시간이 오래 걸리기 때문에 속도를 빠르게 하기 위해 나온 개념입니다. 하지만 context switching 시 cache와 TLB를 flush하고 다시 memory에서 load해야 하기 때문에 프로세스를 전환할때마다 시간을 소요하게 됩니다.
+>>>
+>>> <fc #0000FF> 이 문제점을 해결하기 위해서 나온것이 FCSE입니다.</fc>
+>>> 
+>> 
+>> <fc #0000FF>**ii. FCSE의 특징**</fc>
+>>>
+>>> FCSE는 위와같은 문제점을 해결하기 위해서 아래 그림과 같이 <wrap em>VA(Virtual Address)를 MVA(Modified Virtual Address)로 수정</wrap>합니다.
+>>> {{ :스터디:figures:10차_armc:28주차:fcse_remind.png?direct |}}
+>>>
+>>> FCSE는 이제 더이상 안쓰는 개념이라서, 간략하게 특징만 정리합니다.
+>>> 가장 key point는 VA가 겹치는 문제점을, <fc #0000FF>프로세스 별로 32MB씩 분할</fc>하여 해결하는 것입니다.
+>>>
+>>> 이미 한번 배웠지만, 32MB씩 분할하는 공식은 다음과 같습니다.
+>>> MVA = VA + (0x0200_0000 x 프로세스 ID) = VA | (PID<<25)
+>>> 
+>>> 여기서 프로세스 ID(PID)는 FCSEIDR 레지스터에 저장됩니다.
+>>> {{ :스터디:figures:10차_armc:28주차:fcseidr.png?direct&500 |}} 
+>>>
+>>> 만약 5개의 프로세스가 존재하고 모든 프로세스가 VA 0번째에서 실행한다고 가정하면, MVA는 다음과 같이 나타낼 수 있습니다.
+>>> {{ :스터디:figures:10차_armc:28주차:fcse_after2.png?direct |}}
+>>>
+>>> 이제 FCSE가 왜 Fast라는 명칭이 붙은건지 이해되시죠? 
+>>> 다시한번 정리하면 ① FCSE가 VA를 분할하여 각 프로세스끼리 address가 겹치지 않도록 MVA를 생성하고, ②그에따라 cache와 TLB flush 동작이 필요없어지기에 속도가 빨라집니다.
+>>>
+>>> 그럼 마지막으로 FCSE가 왜 요즘은 안쓰이는지 정리합시다.
+>>  
+>> <fc #0000FF>**iii. FCSE의 도태**</fc>
+>>> 
+>>> 제일 위에도 언급했듯이, Multiprocessing Extensions 에서는 사용하지 않습니다.(obsolete) 이유는 tp님이 정리해주신 내용으로 대체합니다.
+>>>
+>>> - Unicore 시스템에서는 FCSE가  VA aliasing 문제를 풀어서 의미가 있는데, Multicore에서는 해결이 안된다. Multicore에서는 각 core가 cache를 clean, invalidate를 하기 때문에 FCSE가 갖는 특징이 의미가 없어졌다. (FCSE가 현재는 ASID, VMID의 방법으로 발전)
+>>>
+>>> - 다른 이유로는 과거에는 32MB씩 분할하는 FCSE가 유용했지만, 현재는 그 이상을 사용하는 어플리케이션이 많아졌다.
+>>> 
+>>> 따라서 현재는 <fc #0000FF>MVA=VA라고 봐도 무방</fc>하다.
+>>>
+>>>
+>>> 그렇다면 MVA=VA라고 했는데, 2-3)에서 MVA에서 virtual address로 clean, flush동작은 무슨 뜻일까?
+>>> : MVA는 set/way와 더불어 단순히 cache lookup을 위한 수단
+>>> 음... 이건 좀 이해가 잘 안가네요 VA와는 다른건가요? FIXME
+>>>
+>>> ※ 추가로 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130622 | 9주차]]에서 FCSE는 Low Vector를 사용할 수 없는 이유에 대해 토론 했습니다.
+>>>
+>
+>
+> <typo fs:16px;><wrap em> 2) PoC, PoU </wrap></typo>
+>>
+>> <fc #0000FF>**i. PoC(Point of Coherency)**</fc>
+>>> 
+>>> PoC의 Terminology는 MVA와 마찬가지로, "A.R.M, B2.2.6, Terms used in describing the maintenance operations"에 다음과 같이 언급되어 있습니다.
+>>>
+>>> For a particular MVA, <fc #0000FF>the PoC is the point </fc>at which all agents that can access memory are <wrap em>guaranteed to see the same copy of a memory location</wrap>. In many cases, this is effectively <fc #0000FF>the main system memory</fc>, although the architecture does not prohibit the implementation of caches beyond the PoC that have no effect on the coherence between memory system agents.
+>>>
+>>> 결국 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20130727 | 14주차]]에 정리된 내용처럼 memory에 접근하는 모든 주체(cores, peripherals)가 같은 memory 내용을 읽도록 보장하는 point입니다.
+>>>
+>>> 우린 2-2)에서 <fc #0000FF>data inconsistency</fc> 개념에 대해 정리 했습니다. 여기서는 cache에 대해서만 coherence를 보장하지만, PoC는 cache외의 다른 주체까지 coherence를 보장하는 지점입니다.
+>>>
+>>> 문서상으로만 보면 agents란 cache만 얘기하는것 같은데(cache 설명 중 해당 개념이 나와서...), DMA등 다른 peripherals까지 고려하는게 맞나요? FIXME
+>>>
+>>> 일반적으로 대다수의 경우에는 main memory가 PoC에 해당합니다. (아래 그림은 예시)
+>>> {{ :스터디:figures:10차_armc:28주차:poc_odroid.png?direct |}}
+>>>
+>>
+>> <fc #0000FF>**ii. PoU(Point of Unification)**</fc>
+>>>
+>>> PoU의 Term은 다음과 같이 언급되어 있습니다.
+>>>
+>>> <fc #0000FF>The PoU</fc> for a processor is the point by which the <fc #0000FF>instruction and data caches and the translation table walks</fc> of that processor are <wrap em>guaranteed to see the same copy of a memory location</wrap>. In many cases, the point of unification is the point in a uniprocessor memory system by which the instruction and data caches and the translation table walks have merged.
+>>> 
+>>> 간단히 얘기하면 멀티코어에서 coherence를 보장하는 memory level과 싱글코어에서 I/D cache, TLB등에 대한 coherency를 확보하기 위한 level임.
+>>>
+>>> FIXME
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) ARM의 BUS history에 대해서 토론. 간략한 정리가 필요합니다. **  </typo>
+----
+>  AMBA bus 는 (Advanced Microcontroller Bus Architecture, AMBA)이며, 
+> 시스템 칩 (system-on-a-chip : SoC) 설계에서 사용하는 버스 아키텍처이다. 
+>
+>  AMBA는 ARM Ltd에서 1996년에 선보였다. 첫 번째 AMBA 버스의 이름은 Advanced System Bus (ASB)와 
+> Advanced Peripheral Bus (APB)였다. 두 번째 버전인 AMBA 2 에서는AMBA 싱글 클럭엣지 프로토콜인 
+> High-performance Bus (AHB)를 2003년 소개되었다. 세 번째 버전인 AMBA 3에서는 보다 향상된
+> performance에 도달하기 위하여 Advanced eXtensible Interface (AXI)를 포함하며 Advanced Trace 
+> Bus(ATB)를 CoreSight on-chip의 일부로 하여 디버그 및 트레이스 솔루션으로 하였다.
+>
+>  big.LITTLE이 도입되면서 확장한 것이 AMBA4 ACE이다.
+> 시스템 레벨 캐시 일관성을 지원하여 고성능 멀티코어 프로세서가 증가하는 데이터 및 캐시 공유,
+> 보다 많은 교차 컴포넌트 통신 등을 관리하고 공유 캐시 및 외부 메모리에 액세스하는 추가적인 프로세싱
+> 엔진을 지원할 수 있도록 해준다. 캐시 일관성을 관리하기 위한 표준 방법을 발표하여, 
+> 메모리 배리어(Memory barriers) 또는 가상 메모리 관리를 통해 소프트웨어 캐시 관리 활동을 줄이고
+> 프로세서 사이클과 외부 메모리 액세스를 줄일 수 있도록 해준다. 
+>
+>  메모리 서브-시스템에 대해 메모리 배리어를 도입함으로써 필요할 경우에 시스템 설계자들이 최적의 
+> 인스트럭션 오더링(Instruction Ordering)을 할 수 있도록 보장하여 시스템 성능을 향상시킬 수 있다. 
+> 분산 가상 메모리 신호 전달(Distributed virtual memory signaling) 기능은 최신 ARM 아키텍처 및
+> Cortex-A15 프로세서와 함께 도입된 메모리 가상화를 시스템 MMU로 확장하여 보다 효율적으로 외부 메모리를
+> 사용하도록 지원하는 동시에 복수의 OS(operating system)가 적합한 하이퍼바이저 (hypervisor) 하에서
+> 하드웨어 자원을 공유할 수 있도록 해준다. 
+>
+> ref)http://www.newswire.co.kr/newsRead.php?no=550595
+> ref)http://ko.wikipedia.org/wiki/
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) tlp_l2_op2()의 동작은 어떻게 되나요? A15 TRM을 검색해도 안나옵니다. **  </typo>
+<code>
+static inline void clean_pmd_entry(void *pmd)
+{
+        const unsigned int __tlb_flag = __cpu_tlb_flags;
+
+        tlb_op(TLB_DCLEAN, "c7, c10, 1  @ flush_pmd", pmd);
+        tlb_l2_op(TLB_L2CLEAN_FR, "c15, c9, 1  @ L2 flush_pmd", pmd);
+}
+</code>
+----
+> tlp_l2_op2()함수는 "CONFIG_CPU_TLB_FEROCEON"(Feroceon core)가 설정되어 있어야 들어가는 함수입니다.
+> <code c>
+#ifdef CONFIG_CPU_TLB_FEROCEON 
+# define fr_possible_flags      fr_tlb_flags
+# define fr_always_flags        fr_tlb_flags
+</code>
+>
+> 현재 우리 system에 해당하지 않기 때문에 당연히 실행하지 않습니다.
+> 
+> 그런데 왜 다른 함수들과 달리 일단 실행하는지 토론이 있었습니다. 토론중 이 칩벤더가 kernel 제작자와 친한것 아니냐는 말도 나왔습니다.8-)
+> 이런 사소한 code라도 최적화하여 commit할 수 있지 않을까 토론하였습니다.
+> 
+> 그러나 결론은 최적화결과 실행하지 않는다. 해당 함수를 자세히 보면
+> <code c>
+1.    if (always_tlb_flags & (f))
+2.    else if (possible_tlb_flags & (f))
+</code>
+> 두가지 조건절을 거치며 두 절안의 always_tlb_flags, possible_tlb_flags, f가 모두 constant이다.
+> 따라서 조건이 compile time에 결정되며 결과는 모두 거짓이므로 해당 코드는 
+> DCE(Dead Code Ellimiantion)에 의해 완전히 삭제 된다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 7) TLB에도 Instruction TLB, Data TLB가 있나요? **  </typo>
+----
+> 캐시와 마찬가지 입니다. 이론적으로는 만들기 나름이나 대부분다 나누어져 있습니다.
+> CA15의 경우 I-TLB, D-TLB가 각각 32entry씩 있고 unified TLB가 512entry 있습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 8) pmd_off_k()의 index값과 for문이 이해가 안간다. 중복 초기화 되는것 같다. **  </typo>
+<code c>
+for (addr = 0; addr < MODULES_VADDR; addr += PMD_SIZE)
+        pmd_clear(pmd_off_k(addr));
+</code>
+----
+> 해당 code는 MODULE 직전까지 page table의 D-Cache를 clean 하는 것입니다.
+>
+> loop는 다음과 같이 addr에 2M(0x0020_0000)씩 증가하며 반복합니다. addr은 2M씩 증가하나 pgd_index(addr) 매크로에 의해서 index 1씩 증가하게 됩니다.
+>
+> <code c>
+#define pgd_offset(mm, addr)    ((mm)->pgd + pgd_index(addr))
+</code>
+> <code c>
+#define pgd_index(addr)         ((addr) >> PGDIR_SHIFT)
+</code>
+>
+> 결국 아래 그림과 같이 loop를 반복합니다.
+>
+> {{ :스터디:figures:10차_armc:28주차:pmd_clear_1.png?direct&600 |}}
+> 
+> index가 1씩 증가하여 4Byte로 착각할 수 있으나, pgd_t 가 아래와 같이 선언되어 있기 때문에 실제로는 8byte씩 증가합니다.
+> <code c>
+typedef pmdval_t pgd_t[2];
+</code>
+>
+> 이해를 돕기 위해 그림으로 봅시다. 아래 그림은 Memory에서 0x0000_0000 ~ MODULE(0xBEFF_FFFF) 영역까지 <wrap em>해당하는 page table 영역(0xC000_4000 ~ 0xC000_6FC0)을 clean</wrap> 하는 모습을 보여주고 있습니다. <fc #0000FF>(Memory Clean 아님!)</fc>
+> 
+>
+> {{ :스터디:figures:10차_armc:28주차:pmd_clear_2.png?direct&700 |}}
+>
+> {{ :스터디:figures:10차_armc:28주차:pmd_clear_5.png?direct |}}
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 9) code를 macro로 풀어서 볼 수 있는 방법이 있을까요? **  </typo>
+----
+> A팀에서 언급한 이슈 [[http://www.iamroot.org/xe/Kernel_10_ARM/183244#comment_183542 | gcc 옵션 -save-temps]]를 가지고 test 해보았습니다.
+>
+> gcc의 -save-temps보다, 이기환님이 언급하신 바로 compile하는 방법이 더 편하네요. [[http://elinux.org/Kernel_Debugging_Tips#Create_the_preprocessed_file_for_an_individual_source_file | Create the preprocessed file for an individual source file]]
+>
+>>
+>> This is useful if you're having trouble tracking down macro expansion or where defines/prototypes are coming from exactly.
+>> <code c>
+$make fs/buffer.i
+</code> 
+>>
+>
+> 지금 저희가 진행하고 있는 create_mapping() 함수가 정의되어 있는 mmu.c를 test해보았습니다.
+> <code c>
+$ make arch/arm/mm/mmu.i
+</code>
+>
+> 실제 code와 비교해 보겠습니다.
+> 
+> <wrap em>1) 실제 code</wrap>
+> <code c>
+ 817 static void __init create_mapping(struct map_desc *md)
+ 818 {
+ 819         unsigned long addr, length, end;
+ 820         phys_addr_t phys;
+ 821         const struct mem_type *type;
+ 822         pgd_t *pgd;
+ 823 
+ 824         // md->virtual: 0xA0000000, vectors_base(): 0xffff0000, TASK_SIZE: 0xBF000000
+ 825         if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+ 826                 printk(KERN_WARNING "BUG: not creating mapping for 0x%08llx"
+ 827                        " at 0x%08lx in user region\n",
+ 828                        (long long)__pfn_to_phys((u64)md->pfn), md->virtual);
+ 829                 return;
+ 830         }
+</code>
+>
+> <wrap em>2) mmu.i 변환결과</wrap>
+> <code c>
+27450 static void __attribute__ ((__section__(".init.text"))) __attribute__((__cold__)) __attribute__((no_instrument_function)) create_mapping(struct map_desc *md)
+27451 {
+27452  unsigned long addr, length, end;
+27453  phys_addr_t phys;
+27454  const struct mem_type *type;
+27455  pgd_t *pgd;
+27456 
+27457 
+27458  if (md->virtual != ((cr_alignment & (1 << 13)) ? 0xffff0000 : 0) && md->virtual < ((0xC0000000UL) - (0x01000000UL))) {
+27459   printk("\001" "4" "BUG: not creating mapping for 0x%08llx"
+27460          " at 0x%08lx in user region\n",
+27461          (long long)((phys_addr_t)((u64)md->pfn) << 12), md->virtual);
+27462   return;
+27463  }
+</code>
+>
+> <fc #0000FF>825번 라인과, 27458 라인을 비교</fc>해 보면 자동으로 전처리문을 해석해 줍니다.
+> 
+> 오~~~~ 좋네요.
+</WRAP>
+</box>
+\\
+
+
+
+
+
+<box center round blue 95% | <typo fs:18px;> ** 3. setup_arch()->paging_init()->map_lowmem()  ** </typo>>
+\\
+{{ :스터디:figures:10차_armc:28주차:map_lowmem.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) 보통 User, Kernel 영역을 3G/1G로 표현하는데, user영역 끝에 Module도 포함 되나요?  **  </typo>
+----
+> user영역은 TASK_SIZE로 정의가 되어있습니다.
+> 정확한 user영역은 3G-16M = 0xBF00_0000 입니다.
+> <code c>
+/*
+ * TASK_SIZE - the maximum size of a user space task.
+ */
+#define TASK_SIZE               (UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M))
+</code>
+>
+> 현재까지 정리한 memory map입니다.
+> {{ :스터디:figures:10차_armc:28주차:task_size.png?direct&700 |}}
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) create_mapping()함수 중 계산이 잘못된 것 같습니다. if문으로 들어가게 됩니다. **  </typo>
+<code c>
+if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+       printk(KERN_WARNING "BUG: not creating mapping for 0x%08llx"
+              " at 0x%08lx in user region\n",
+               (long long)__pfn_to_phys((u64)md->pfn), md->virtual);
+        return;
+} 
+</code>
+----
+> 스터디 마지막에 if문이 실행되어 WARNING이 출력된다??? 뭔가 잘 못되었구나 싶어서 찾아보다가 끝났습니다. 
+> 
+<code> if (md->virtual != vectors_base() && md->virtual < TASK_SIZE)</code>
+> if문에 값을 넣어 보겠습니다. md->virtual 값을 구해야 합니다. 
+>
+<code>
+map.virtual = __phys_to_virt(start);
+</code>
+> 지금까지 알고 있던 물리 주소에서 가상 주소로 변환 오프셋(0x8000 0000)을 더해서 if문을 대입하면
+> 0x2000 0000 + 0x8000 0000 = 0xA000 0000 입니다. 
+> 
+<code> if (0xA000 0000 != 0xFFFF 0000 && 0xA000 000 < 0xBF00 0000 )</code>
+> 이렇게 되면 if문에 들어갑니다. 
+>
+> 그럼 WARRING을 만나실 수 있습니다. !!!
+>
+> 무엇이 문제였나 분석해 보았습니다. 물론 제 생각이 잘 못되었을 수도 있으니 함께 검증해야합니다. 
+>
+>
+> 추론 : 스터디 시간에는 0x8000 0000을 더해서 0xA000 0000이라고 했는데, 여기에 문제점이 있었습니다. 
+> 0x8000 0000을 더하는 것이 아니라 0xA000 0000을 더해야 0xC000 0000으로 옳바른 가상 주소가 계산됩니다.
+> 
+> 커널 영역 즉 low memory는
+> 가상 주소 -> 물리 주소에 대응합니다. 
+> 0xC000 0000 -> 0x2000 0000 
+> 0xEF80 0000 -> 0x4F80 0000 
+>
+> 이렇게 되어야 map_lowmem이 성립합니다. 
+> 이 함수는 low memory는 커널 메모리 영역을 
+> 가상 주소인 0xC000 0000 ~ 0xEF80 0000을 create_mapping 합니다.
+>
+> 정리하면 스터디 마지막에 
+> create_mapping함수에서 if문에서  md->virtual 는  0xA000 000가 아닌 0xC000 0000 입니다.
+> if (md->virtual != vectors_base() && md->virtual < TASK_SIZE)을 값으로 풀어 쓰면
+> if (0xC000 0000 != 0xFFFF 0000 && 0xC000 000 < 0xBF00 0000 )
+> 이므로 KERN_WARRING을 들어 가지 않습니다. 
+>
+>
+> 그렇다면 이 추론이 맞는지 궁금증을 정리해 봅시다.  
+> 
+> 1. 물리 주소에서 0xA000 0000을 더해야 하는데,어떻게 이 값을 더해야 하는지 원리를 알 수 있을까요???
+> 2. 그리고 0x6F80_0000은 0xA000_0000을 더할 경우, 언급하신 0xEF80_0000이 안나옵니다.
+> 그렇다면 0x2000_0000의 경우에만 0xA000_0000을 더해야 한다는 결론이 나오는데... 
+>
+> 궁금증을 하나씩 풀어가 봅시다. 
+>
+>
+> 우선 우리는 물리 어드레스 0x4000 0000에 커널이 올라간다고 보았습니다. 
+> 이때 커널 코드의 시작은 0x4000 8000 입니다. 
+>
+> 물리 주소와 가상 주소의 offset 값을 0x8000 0000 라고 계산하여 
+> 0x4000 0000 + 0x8000 0000을 더하면 가상 주소인 0xC000 0000 입니다.  
+> 0x6f80 0000 + 0x8000 0000을 더하면 가상 주소인 0xEF80 0000 입니다. 
+>
+> 여기서 0x4000 0000이 어디서 왔는가가 중요한데요. 
+> Exynos 5250의 경우는 DTB를 열어 보면 
+>
+<code>
+#include "exynos5250.dtsi"
+
+/ {
+  model = "SAMSUNG SMDK5250 board based on EXYNOS5250";
+  compatible = "samsung,smdk5250", "samsung,exynos5250";
+
+  aliases {
+  };
+
+  memory {
+  	 reg = <0x40000000 0x80000000>;
+</code>
+>Exynos 5420에 DTB를 열어 보면
+<code>
+/ {
+  model = "Samsung SMDK5420 board based on EXYNOS5420";
+  compatible = "samsung,smdk5420", "samsung,exynos5420";
+
+  memory {
+  	 reg = <0x20000000 0x80000000>;
+	 };
+</code>
+> 차이점이 보이시나요?
+> 
+> Low Memory 영역을 계산할 때, pv_table을 따라야 하지만, 일반적인 수식인
+<code> 
+__virt_to_phys(x)       ((x) - PAGE_OFFSET + PHYS_OFFSET)
+</code>
+> 이수식을 가지고 0xEF80 0000의 가상 주소를 PHYS_OFFSET을 0x4000 0000 으로 계산하여
+> 0x6F80 0000을 구했습니다.
+> 
+> -> 0x6F80 0000 = 0xEF80 0000 - 0xC000 0000 + 0x4000 0000
+>    
+> 이 때, low memory 영역은 0x4000 0000 ~ 0x6F80 0000 이 됩니다. 크기는 0x2F80 0000 입니다. 
+>
+> exynos 5420 DTB에서 우리는 0x2000 0000 에서 물리 메모리가 시작한다고 해서 memblcok을 만들었습니다. 
+>
+> 이것을 바탕으로 해서 위의 식을 다시 계산하겠습니다. 
+> 0xEF80 0000의 가상 주소를 PHYS_OFFSET 0x2000 0000 으로 계산하면 0x4F80 0000이 됩니다. 
+> -> 0x4F80 0000 = 0xEF80 0000 - 0xC000 0000 + 0x2000 0000
+>
+> 이 때, low memory 영역은 0x2000 0000 ~ 0x4F80 0000 이 됩니다. 크기는 0x2F80 0000 입니다. 
+>
+>정리하면 exynos5420에서는 
+> 물리 주소 0x2000 0000 ~ 0x4F80 0000 가
+> 가상 주소 0xC000 0000 ~ 0xEF80 0000 이 되어야 합니다. 
+> 그래야 우리가 분석하면서 이상하게 생각했던 부분이 해결됩니다. 
+>
+> 이렇게 되면 또 문제가 하나 남습니다. 
+> PHYS_OFFSET 이 0x4000 0000 이 0x2000 0000 로 바뀌었네요.
+>
+> 여기서 코드를 다시 보았습니다. 
+> virt_to_phys는 head.S에서 fixup_pv_table을 통해서 0x4000 0000이 0x2000 0000으로 변경됩니다. 
+> 즉 소스 분석시 물리주소에서 가상 주소를 계산하려면 0x8000 0000이 아닌 0xA000 0000을 사용합니다. 
+>
+> 이부분에 대한 자세한 코드입니다. 
+>
+> virt_to_phys은 pv_stub을 호출합니다. 
+<code>
+static inline unsigned long __virt_to_phys(unsigned long x)
+{
+        unsigned long t;
+        __pv_stub(x, t, "add", __PV_BITS_31_24);
+        return t;
+}
+</code>
+> 이 코드는 memory.h에서 정의에 따라서
+<code>
+#ifdef CONFIG_ARM_PATCH_PHYS_VIRT // CONFIG_ARM_PATCH_PHYS_VIRT=y
+</code>
+> 전역 변수 선언을 했습니다. 
+<code>
+extern unsigned long __pv_phys_offset;
+#define PHYS_OFFSET __pv_phys_offset
+</code>
+>
+> 이 PHYS_OFFSET은 아래 코드로 재계산 됩니다. 
+<code>
+#define __pv_stub(from,to,instr,type)                   \
+        __asm__("@ __pv_stub\n"                         \
+        "1:     " instr "       %0, %1, %2\n"           \
+        "       .pushsection .pv_table,\"a\"\n"         \
+        "       .long   1b\n"                           \
+        "       .popsection\n"                          \
+        : "=r" (to)                                     \
+        : "r" (from), "I" (type))
+</code>
+> pv_stub에서 pv table을 구성하는데, 런타임에서 재계산되어(head.S에서 fixup_pv_table) 사용합니다.
+> 
+> fixup_pv_table이 있는 head.S를 보겠습니다. 
+> 
+<code>
+ENTRY(fixup_pv_table)
+        stmfd   sp!, {r4 - r7, lr}
+        ldr     r2, 2f                  @ get address of __pv_phys_offset
+        mov     r3, #0                  @ no offset
+        mov     r4, r0                  @ r0 = table start
+        add     r5, r0, r1              @ r1 = table size
+        ldr     r6, [r2, #4]            @ get __pv_offset
+        bl      __fixup_a_pv_table
+        ldmfd   sp!, {r4 - r7, pc}
+ENDPROC(fixup_pv_table)
+        .align
+2:      .long   __pv_phys_offset
+
+        .data
+        .globl  __pv_phys_offset
+        .type   __pv_phys_offset, %object
+__pv_phys_offset:
+        .long   0
+        .size   __pv_phys_offset, . - __pv_phys_offset
+__pv_offset:
+        .long   0
+</code>
+> 최종 요약
+> PHYS_OFFSET은 0x4000 0000을 가정하였지만, 0x2000 0000 이 되고, 
+> 이렇게 되는 이유는 fixup_pv_table을 통해서 보정했습니다. 
+>
+> 0xEF80 0000의 가상 주소를 PHYS_OFFSET 0x2000 0000 으로 계산하면 0x4F80 0000이고 
+>
+> 이 때 low memory 영역은 0x2000 0000 ~ 0x4F80 0000 이 됩니다. 크기는 0x2F80 0000 (760MB)입니다. 
+</WRAP>
+</box>
+\\
+\\
+\\

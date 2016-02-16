@@ -1,0 +1,114 @@
+조성진님이 매우 바쁘신 관계로 대신 간단히 작성해 봅니다.
+그림도 넣고 위키에도 하면 좋겠으나 정성과 시간이 부족한 관계로 텍스트로 간단히 정리하겠습니다.
+다른 분들이 발전시켜 주시길...
+
+1. setup_arch()->paging_init()->devicemaps_init()->exynos_init_io()
+  1.1. debug_ll_io_init()?
+    DEBUG_LL이 config된경우 uart 영역에 대하여 iotable_init() 수행
+    본 스터디에서는 무시
+  1.2. exynos_fdt_map_chipid()->iotable_init()->add_static_vm_early()
+    - 일반적인 linked list(단일 또는 이중)의 insert와 동일
+      insert방법은 address 기준 오름차순 정렬 list 유지
+        자신보다 작은 addr은 continue, 자신보다 큰 addr에서 break후 insert
+    - list_for_each_entry(curr_svm, &static_vmlist, list) 분석
+      해당 구문은 다음과 같음
+      for (curr_svm = list_entry((&static_vmlist)->next, typeof(*curr_svm), list);  \
+        &curr_svm->list != (&static_vmlist);   \
+        curr_svm = list_entry(curr_svm->list.next, typeof(*curr_svm), list))
+    - list_entry(ptr, type, member) 해석?
+      type형태의 struct에서 member 변수의 주소값을 ptr로 볼 때 해당 structure의 시작 주소를 return 하는 함수
+      즉 ptr - offsetof(type,member)
+    - static_vmlist와 static_vm 구조체의 관계
+      static_vmlist는 static_vm.list만 관리
+    - 따라서 첫번 째 svm은 static_vmlist.next가 가리키는 list를 멤버로 갖는 svm 구조체
+    - static_vmlist와 같은 list_head는 다음의 방식으로 운영
+///TP: list concept, some prev pointer links are ommited
+///   +---------------+-------------+ <---------------------------------------+
+///   | static_vmlist | list_head   |                                         |
+///   |               | next | prev |--------------------------------------+  |
+///   +---------------+-------------+                                      |  |
+///                      |                                                 |  |
+///                      |                  +-----------+-------------+    |  | 
+///                      |             svm0 |     vm    |  vm_struct  |    |  |
+///                      +----------------> +-----------+-------------+    |  |
+///                                         |    list   | list_head   |    |  |
+///                                         |           | next | prev |    |  |
+///                                         +-----------+-------------+    |  |
+///                                                         |              |  |
+///                      +----------------------------------+              |  |
+///                      |                                                 |  |
+///                      |                                                 |  |
+///                      |                  +-----------+-------------+    |  | 
+///                      |             svm1 |     vm    |  vm_struct  |    |  |
+///                      +----------------> +-----------+-------------+ <--+  |
+///                                         |    list   | list_head   |       |
+///                                         |           | next | prev |       |
+///                                         +-----------+-------------+       |
+///                                                          |                |
+///                                                          +----------------+
+
+    - 기타:
+      애초에 static_vm와 같은 list 포함 struct에서 list를 struct의 처음부분에 위치시키면
+      list_entry같은 복잡한 매크로없이 쉽게 사용할 수 있지 않을까?
+      현재 코드는 범용성을 위해 list를 임의의 위치에 배치가능하도록 작성하였으나 불필요하게 복잡해보인다.
+  1.3. s5p_init_cpu()
+    - __raw_readl()의 asm 문법
+      asm volatile("ldr %1, %0": "+Qo" (*(volatile u32 __force *)addr), "=r" (val)); 
+      Constraint: 
+        Q(single base with no offset), 
+        o(constant, ARM에는 없으나 추정), 
+      ref: http://gcc.gnu.org/onlinedocs/gcc/Constraints.html 
+      위의 구문은 disassemble결과 "ldr r1, [r0]" 로 변경
+    - disassembly 생성 방법
+      $ arm-linux-gnueabihf-objdump -S vmlinux > vmliux.S.dis
+      S for view with source,
+      D 등의 자세한 flag는 help 참조
+  1.4. s3c_init_cpu()->exynos5_map_io()
+    - exynos5_iodesc 및 iotable_init()을 통해 다음 영역을 static_vm 설정
+      SYSC:0xf6100000++ 64kB
+      TMR :0xf6300000++ 16kB
+      WDT :0xf6400000++  4kB
+      ROMC:0xf84c0000++  4kB
+      SRAM:0xf8400000++  4kB
+      CMU :0xf8100000++144kB
+      PMU :0xf8180000++ 64kB
+
+2. setup_arch()->paging_init()->devicemaps_init()->fill_pmd_gaps()
+  2.1. 동작 설명?
+    address 및 size가 section(1MB) aligned된 경우
+    alloc_init_pmd()는 __map_init_section()를 호출하며
+    이 경우 size 및 address offset에 따라 2MB의 pgd중 일부는 mapping되지 않는 경우가 있다.
+    (예: 0xd0000000에 3MB를 할당하는 경우 0xd0300000의 1MB는 미초기화
+         0xd0100000에 3MB를 할당하는 경우 0xd0000000의 1MB는 미초기화)
+    (alloc_init_pte()를 통해 4kB 2nd page table을 할당하는 경우 2MB 모두에 대한 2nd page table을 할당)
+    이렇게 부분적으로 초기화되지 않은 pgd에 대하여 해당 pmd 영역을 VM_ARM_EMPTY_MAPPING flag와 함께 static_vmlist에 추가하여
+    ioremap(), vmalloc()등이 사용하지 않도록 설정
+
+3. setup_arch()->paging_init()->devicemaps_init()->pci_reserve_io()
+  Exynos5는 PCI, RIO등의 IO를 지원하지 않으므로 본함수는 수행하지 않음
+  참고1: Exynos5는 HDMI, USB, SATA, HSIC 등의 고속 고대역폭과 SPI,I2C,UART등의 일반 IO를 지원
+  참고2: PCI지원하는 경우 본 함수를 통해 PCI용 static_vm(@0xfee00000)을 reserve
+  ref to 1.3 block diagram, Exynos 5250_UM
+
+4. setup_arch()->paging_init()->devicemaps_init()->local_flush_tlb_all()
+  TLB를 무효화
+    - dsb,isb를 통해 write buffer를 비우고 pipeline 비움
+
+5. setup_arch()->paging_init()->devicemaps_init()->flush_cache_all()
+  cache clean & invalidate
+    - data cache를 LoC까지 clean&invalidate(device관련정보를 설정하였으므로 LoC까지 무효화하여야 함)
+    - insturction cache 및 Branch Predictor는 LoU까지 무효화
+
+6. setup_arch()->paging_init()->kmap_init()
+  0xbfe00000++2MB 영역에 대하여 2nd page table 영역을 할당 및 mapping
+  kmap이란? 
+    TBD
+
+7. setup_arch()->paging_init()->tcm_init()
+  7.1. TCM이란?
+    a.k.a. scratch pad
+    주로 embedded 시스템에서 메모리 latency등의 보장을 위해 코어에 dedication시키는 메모리
+    cache와 비교분석하면 다음과 같다.
+    cache와의 공통점은 속도, 크기, 구현 기술(SRAM), hierarchy(L1 instruction-TCM, data-TCM, L2 unified TCM) 구성이 유사
+    cache와의 차이점: cache의 경우 자동으로 cacheable 영역의 instruction, data를 별도의 지시 없이 HW가 자동으로 교체, TCM은 필요한 instruction, data를 수동으로 위치(예: timing critical한 경우 exception, 특수 data를 고정시켜 사용, 일부는 DMA를 통한 buffer로 사용 가능)
+    또한 DRAM-TCM은 storage의 non-volatile 특성은 배제할 때 storage-DRAM 관계와 유사한 측면이 있다.

@@ -1,0 +1,507 @@
+==== 30주차(2013.11.16) ====
+<box center round blue 95% | <typo fs:18px;> ** 1. github 주소 변경 및 이전작업  ** </typo>>
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) github 주소를 변경하면 기존 코드는 다 지우고 다시 받나요? **  </typo>
+----
+> 아니오. 기존 remote 저장소 삭제하고 추가만 하면 됩니다.
+><sxh; gutter:false; toolbar:false;>git remote rm <remote_repository_name>
+git remote add <remote_repository_name> git@github.com:arm10c/linux.git </sxh>remote_repository_name은 '' git remote -v '' 로 확인할 수 있습니다.
+>
+>
+> 만약 두 개 이상의 remote 저장소를 관리하고 싶다면,
+> 1. 등록
+> '' git remote add <remote_repository_name> <URL> ''
+> 2. push & pull.<sxh; gutter:false; toolbar:false;>git push <remote_repository_name> <branch_name>
+git pull <remote_repository_name> <branch_name></sxh>branch_name(local 저장소)은 '' git branch -v ''로 확인할 수 있습니다.
+
+</WRAP>
+
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) github SSH키 등록 관련 **  </typo>
+----
+> google 공유폴더(20131116) 문서에 있는 계정으로 로그인 후 아래 참조해서 ssh키를 생성 및 등록 하면 됩니다.
+> https://help.github.com/articles/generating-ssh-keys
+> 주의 1: Step 3에서 공백이나 탭이 포함 안되게 주의해야 합니다.
+> 주의 2: Github에 이미 등록된 키는 중복해서 등록할 수 없으므로 새로 생성해서 등록해야 합니다.
+
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) cscope에서 못찾는 내용은 어떻게 찾나요? **  </typo>
+----
+> 왠만한 것은 검색 가능하지만, 가끔 빠질 수 있습니다. 이 경우 grep을 이용하여 검색 가능합니다.
+>
+> 다음과 같이 grep으로 검색 가능합니다.
+> <sxh; gutter:false; toolbar:false;>
+find . -name '*.[csSh]' |xargs grep "page"
+</sxh>
+> 추가로 color 옵션과, 정확한 단어 검색을 위해서 -w 도 유용합니다.
+> <sxh; gutter:false; toolbar:false;>
+find . -name '*.[csSh]' |xargs grep --color=always -w "page"
+</sxh>
+> vim에서 사용할 수 있는 방법은 [[http://www.vim.org/scripts/script.php?script_id=311 | grep.vim]]을 받아서 사용하면 됩니다.
+>
+> 받으신다음 <nowiki> $HOME </nowiki> 의 .vim/plugin 폴더에 카피하시고 쓰시면 됩니다.
+>
+> 단축키는 아래와 같이 <nowiki> HOME 폴더의 .vimrc </nowiki>에 아래의 설정과 같이 key를 mapping하여 쓰시면 됩니다.
+> <sxh; gutter:false; toolbar:false;>
+nnoremap <silent> <F3> :Grep<CR> 
+</sxh>
+> 찾고자 하는 keyword위에 커서를 두고 <F3>키를 누르면 실행됩니다.
+> 연동 관련 내용은 링크에 자세히 나와있네요. 참고하세요
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 2. setup_arch()→paging_init()→devicemaps_init()  ** </typo>>
+\\
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) kuser가 무슨 뜻인지 먼저 짚고 넘어갑시다.   **  </typo>
+<sxh c; toolbar:false;>
+#ifdef CONFIG_KUSER_HELPERS 
+static void __init kuser_init(void *vectors)
+{
+        extern char __kuser_helper_start[], __kuser_helper_end[];
+        int kuser_sz = __kuser_helper_end - __kuser_helper_start;
+
+        memcpy(vectors + 0x1000 - kuser_sz, __kuser_helper_start, kuser_sz);
+
+        /*  
+         * vectors + 0xfe0 = __kuser_get_tls
+         * vectors + 0xfe8 = hardware TLS instruction at 0xffff0fe8
+         */
+        if (tls_emu || has_tls_reg)
+                memcpy(vectors + 0xfe0, vectors + 0xfe8, 4); 
+}
+</sxh>
+----
+> kuser는 kconfig에 다음과 같이 명시되어 있습니다.
+>> 
+>> Provide kuser helpers in the vector page.  <wrap em>The kernel provides helper code to userspace</wrap> in read only form at a <fc #0000FF>fixed location in the high vector page</fc> to allow userspace to be independent of the CPU type fitted to the system.  This permits binaries to be run on ARMv4 through to ARMv7 without modification.
+>>
+>> See Documentation/arm/kernel_user_helpers.txt for details.
+>
+>
+> 즉 kernel이 아키텍쳐와 상관없이 user 레벨에서 사용할 수 있도록, high vector 고정위치에 읽기 전용으로 helper 코드를 제공할 수 있도록 해놓은 것입니다.
+>
+> 이렇게 해놓은 이유는 보통 user가 소프트웨어 인터럽트를 통해서 kernel모드를 진입하는데, 이렇게 하면 속도가 느리니까 high vector에 맵핑해서 성능향상의 이득을 볼 수 있습니다.
+>
+>
+> Documentation보라니까, 한번 살펴봅시다.
+>>
+>> These are segment of kernel provided user code reachable from user space at a fixed address in kernel memory. This is used to provide user space with some operations which require kernel help because of unimplemented native feature and/or instructions in many ARM CPUs. The idea is for this code to be executed directly in user mode for best efficiency but which is too intimate with the kernel counter part to be left to user libraries.
+>>
+> 마찬가지로 위와 같은 맥락의 내용이 포함되어 있습니다. 추가로 많은 ARM CPU에서 native한 명령이 구현되지 않아서 kernel help가 필요한 경우를 위해 사용되기도 합니다.
+> 
+> 문서를 더 보면, barrier, compxchg, tls같은 명령이 포함되는 것으로 보아서 동기화용 명령어도 존재하는 것 같습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) 그렇다면, kuser는 ISR과 비슷하다고 보면 될까요?  **  </typo>
+----
+> 일종의 ISR과 비슷하다고도 할 수 있는데, ISR은 0xFFFF_0000에 존재하는 것이고,
+> kernel user helper는 한쪽 영역에 전부 몰아 넣어서 사용하는것으로 보여집니다. 또 version 정보가 들어있기 때문에, version만 맞으면 바로 사용하는 것 같습니다.
+>
+> 지금 이게 등장한 이유는 vector영역에 속한 내용이기 때문에, 적절한 위치에 복사해서 사용하기 위함입니다.
+> 아마 해당되는 코드를 그대로 복사할 것입니다.
+>
+> 아래 코드를 보면 <nowiki> __kuser_helper_end </nowiki> 에서 <nowiki> __kuser_helper_start </nowiki> 까지의 영역을 복사하게 되어 있는데, 어셈으로 보면 사이의 명령어를 전부 복사한다고 보면 맞습니다.
+>
+>
+> <sxh c; highlight: [3]; toolbar:false;>
+int kuser_sz = __kuser_helper_end - __kuser_helper_start;
+
+memcpy(vectors + 0x1000 - kuser_sz, __kuser_helper_start, kuser_sz);
+</sxh>
+> <sxh c; toolbar:false;>
+        .align  5
+        .globl  __kuser_helper_start
+__kuser_helper_start:
+        
+/*
+ * Due to the length of some sequences, __kuser_cmpxchg64 spans 2 regular
+ * kuser "slots", therefore 0xffff0f80 is not used as a valid entry point.
+ */
+        
+__kuser_cmpxchg64:                              @ 0xffff0f60
+        
+#if defined(CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG)
+
+        /*
+         * Poor you.  No fast solution possible...
+         * The kernel itself must perform the operation.
+         * A special ghost syscall is used for that (see traps.c).
+         */
+        stmfd   sp!, {r7, lr}                   
+        ldr     r7, 1f                  
+        swi     __ARM_NR_cmpxchg64              
+        ldmfd   sp!, {r7, pc}
+1:      .word   __ARM_NR_cmpxchg64
+
+
+...
+
+
+
+__kuser_get_tls:                                @ 0xffff0fe0
+        ldr     r0, [pc, #(16 - 8)]     @ read TLS, set in kuser_get_tls_init
+        usr_ret lr
+        mrc     p15, 0, r0, c13, c0, 3  @ 0xffff0fe8 hardware TLS code
+        kuser_pad __kuser_get_tls, 16
+        .rep    3
+        .word   0                       @ 0xffff0ff0 software TLS value, then
+        .endr                           @ pad up to __kuser_helper_version
+
+__kuser_helper_version:                         @ 0xffff0ffc
+        .word   ((__kuser_helper_end - __kuser_helper_start) >> 5)
+        
+        .globl  __kuser_helper_end
+__kuser_helper_end:
+</sxh>
+>
+> 이해를 돕기 위해서 하나만 예를 들면, 위 code에서 보여지고 있는 <nowiki> __kuser_helper_version </nowiki>의 경우 document에 다음과 같이 정의되어 있습니다. 여기서 Location은 0xFFFF_0FFC라고 되어 있는데, 위의 code에서 주석도 0xFFFF_0FFC로 되어있는걸 확인 가능합니다.
+>
+> <sxh; highlight: [2]; toolbar:false;>
+> kuser_helper_version
+> --------------------
+
+Location:       0xffff0ffc
+
+Reference declaration:
+
+  extern int32_t __kuser_helper_version;
+
+Definition:
+
+  This field contains the number of helpers being implemented by the 
+  running kernel.  User space may read this to determine the availability
+  of a particular helper.
+
+Usage example:
+
+#define __kuser_helper_version (*(int32_t *)0xffff0ffc)
+
+...
+</sxh>
+>
+> kuser_helper관련하여 추가로 설명하면
+> 전술한 바와 같이 kuser_helpers 코드는 0xffff1000근처에 위치하는데 user 영역에서 실행하기 위해서는 다른 커널영역과는 달리 추가 permission이 필요하다.
+> 이를 위해서 아래 코드와 같이 L_PTE_USER 속성을 추가한 MT_HIGH_VECTORS를 mem_type으로 사용하여 설정한다.
+> <sxh c; toolbar:false;>
+// create_mapping() 호출 전 type 설정 코드
+#ifdef CONFIG_KUSER_HELPERS
+        map.type = MT_HIGH_VECTORS;
+#else
+        map.type = MT_LOW_VECTORS;
+#endif  
+// mem_type 별 설정값
+        [MT_HIGH_VECTORS] = {
+                .prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+                                L_PTE_USER | L_PTE_RDONLY,
+                // ...
+        },
+        [MT_LOW_VECTORS] = {
+                .prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+                                L_PTE_RDONLY,
+                // ...
+        },
+</sxh>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) tls_emu와 has_tls_reg의 의미는 무엇일까요?  **  </typo>
+<sxh c; gutter:false; toolbar:false;>
+    if (tls_emu || has_tls_reg)
+            memcpy(vectors + 0xfe0, vectors + 0xfe8, 4);
+</sxh>
+----
+> 위에서 설명한것과 같은 내용입니다.
+> Document에는 다음과 같이 get_tls()fuction이 0xFFFF_0FE0에 정의되어 있고, 위 code에서도 offset 0xfe0를 더한것을 확인할 수 있습니다.
+>
+> <sxh; highlight: [4]; toolbar:false;>
+kuser_get_tls
+-------------
+
+Location:       0xffff0fe0
+
+Reference prototype:
+
+  void * __kuser_get_tls(void);
+
+Input:
+
+  lr = return address
+
+Output:
+
+  r0 = TLS value
+
+Clobbered registers:
+
+  none
+
+Definition:
+
+  Get the TLS value as previously set via the __ARM_NR_set_tls syscall.
+</sxh>
+> TLS는(Thread Local Storage) register로 v6에서 전부 지원되는 것이 아닌 것으로 보여집니다. (http://www.spinics.net/lists/linux-omap/msg44079.html)
+>
+> 이 기능은 ARM v6에서는 지원하지 않는 모델도 있어서, setup_arch()의 feat_v6_fixup()에서도 잠시 봤던 기능입니다.
+> <sxh c; gutter:false; toolbar:false;>
+if ((((id >> 4) & 0xfff) == 0xb36) && (((id >> 20) & 3) == 0))
+        elf_hwcap &= ~HWCAP_TLS;
+</sxh>
+> 결국 TLS를 에뮬레이션 하거나, TLS 레지스터를 가지고 있으면 해당 주소로 복사를 통해 지원하는 명령입니다.
+>
+> 아래 코드와 같이 kuser_get_tls 함수는 SW TLS와 HW TLS순으로 구현하였는데 HW TLS를 지원하는 경우 HW TLS로 SW TLS 코드를 덮어 써 나중에 해당 코드 호출시 HW TLS로 동작하도록 한 것이다.
+> <sxh c; toolbar:false;>
+__kuser_get_tls:                        @ 0xffff0fe0
+        ldr     r0, [pc, #(16 - 8)]     @ Software TLS
+        usr_ret lr
+        mrc     p15, 0, r0, c13, c0, 3  @ Hardware TLS code
+        kuser_pad __kuser_get_tls, 16
+</sxh>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) 이건 단순한 호기심인데, E를 왜 에코라고 지칭하나요?  **  </typo>
+----
+> 발음할때 숫자2와 헷갈릴 수 있기 때문입니다. 
+> 이와 같은 원리로 전에 C팀 신조어 <wrap em>E↗</wrap>도 있었죠 LOL
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) flush_icache_range()의 호출 체계가 이해가 안갑니다.   **  </typo>
+<sxh c; gutter:false; toolbar:false;>
+flush_icache_range(vectors, vectors + PAGE_SIZE * 2);
+</sxh>
+<sxh c; gutter:false; toolbar:false;>
+#define flush_icache_range(s,e)         __cpuc_coherent_kern_range(s,e)
+</sxh>
+<sxh c; gutter:false; toolbar:false;>
+#define __cpuc_coherent_kern_range      cpu_cache.coherent_kern_range
+</sxh>
+----
+> **① cpu_cache 구조체의 주소값 저장**
+>
+> cpu_cache는 다음 code와 같이 cpu_cache_fns로 정의되어 있습니다.
+> <sxh c; gutter:false; toolbar:false;>
+struct cpu_cache_fns cpu_cache __read_mostly;
+</sxh>
+> cpu_cache_fns는 setup_arch()에서 보고 넘어왔습니다. 다시한번 리마인드 해보죠. 라고는 해도 이해하기 쉽게 21주차 그림한장 보고 갑시다! 
+> {{ :스터디:figures:10차_armc:30주차:cpu_cache_fns.png?direct |}}
+>
+> 빨간색 상자 이제 기억나시나요?  
+> <sxh c; toolbar:false;>
+/*
+ * This provides a C-API version of __lookup_processor_type
+ */
+ENTRY(lookup_processor_type)
+        stmfd   sp!, {r4 - r6, r9, lr} 
+        mov     r9, r0
+        bl      __lookup_processor_type
+        mov     r0, r5
+        ldmfd   sp!, {r4 - r6, r9, pc} 
+ENDPROC(lookup_processor_type)
+</sxh>
+> <sxh c; toolbar:false;>
+__lookup_processor_type:
+        adr     r3, __lookup_processor_type_data
+        ldmia   r3, {r4 - r6}
+        sub     r3, r3, r4                      @ get offset between virt&phys
+        add     r5, r5, r3                      @ convert virt addresses to
+        add     r6, r6, r3                      @ physical address space
+        // arch/mm/proc-v7.S 의 아래의 값을 r3, r4에 로드함
+        // __v7_ca15mp_proc_info:
+        // .long        0x410fc0f0
+        // .long        0xff0ffff0 
+1:      ldmia   r5, {r3, r4}                    @ value, mask
+        and     r4, r4, r9                      @ mask wanted bits
+        teq     r3, r4
+        beq     2f
+        add     r5, r5, #PROC_INFO_SZ           @ sizeof(proc_info_list)
+        cmp     r5, r6
+        blo     1b
+        mov     r5, #0                          @ unknown processor
+2:      mov     pc, lr
+ENDPROC(__lookup_processor_type)
+
+/*
+ * Look in <asm/procinfo.h> for information about the __proc_info structure.
+ */
+        .align  2   
+        .type   __lookup_processor_type_data, %object
+__lookup_processor_type_data:
+        // arch/mm/proc-v7.S 에 정의 되어 있음
+        .long   .                               // r4 에 로드됨
+        .long   __proc_info_begin               // r5 에 로드됨
+        .long   __proc_info_end                 // r6 에 로드됨
+        .size   __lookup_processor_type_data, . - __lookup_processor_type_data
+</sxh>
+> 이 코드는 C언어 진입전에도 봤었고, setup_arch()에서도 봤었습니다. 당시에 이 함수의 역할이 CPU에 해당하는 구조체값을 가져온다고 공부했고, 구조체가 어느 주소에 있는지 알 수 있으며, 그 포인터 값을 찾아온다고도 배웠습니다.
+>
+> 그래서 위의 그림에 있는 "proc_info_list"의 구조체에 다음 그림과 같은 매크로("arch/mm/proc-v7.S"에 존재)의 결과값이 들어간다고 배웠고, cpu_arch_name, hardware속성, cpu name등에 대해 공부했었습니다.
+> {{ :스터디:figures:10차_armc:30주차:proc.info.png?direct |}}
+> 
+> 그리고 이때 이미 cpu_cache에 구조체(struct cpu_cache_fns) 주소값도 저장하였습니다.
+> <sxh c; toolbar:false;>
+list = lookup_processor_type(read_cpuid_id());
+
+#ifdef MULTI_CACHE
+        cpu_cache = *list->cache;
+#endif
+</sxh>
+> 
+>
+> ** ② v7_cache_fns 호출 **
+>
+> 우리가 현재 원하는 "cpu_cache.coherent_kern_range"의 실행을 위해서 "cpu_cache"에 해당하는 <fc #0000FF>v7_cache_fns</fc>의 위치를 찾아 봅시다.
+>
+> v7_cache_fns는 여러 아키텍쳐를 지원하기 위해서 해당 네임으로 존재하지 않고, <fc #0000FF>"아키텍쳐" + "_cache_fns"의 구조</fc>로 이루어져 있습니다. 
+>
+> 해당 코드는 "arch/arm/mm/proc-macro"에 위치해 있습니다.
+> {{ :스터디:figures:10차_armc:30주차:cache_fns.png?direct |}}
+> 위의 코드에서 <fc #FF0000>name이 위에서 말한 "아키텍쳐"</fc>가 되는 것이고, "_cache_fns"가 붙어서 완성된 형태의 cache function이 이루어 집니다. 
+>
+> 우리의 아키텍쳐는 v7이므로, "arch/arm/mm/cache-v7.S"에 있는 define_cache_functions가 등록됩니다.
+> <sxh c; gutter:false; toolbar:false;>
+    @ define struct cpu_cache_fns (see <asm/cacheflush.h> and proc-macros.S)
+    define_cache_functions v7
+</sxh>
+> 자 이렇게 <fc #0000FF>"v7_cache_fns"</fc>가 이루어 집니다.
+>
+>
+> 이제 다왔습니다. "cpu_cache.coherent_kern_range"에서 남은 "coherent_kern_range"를 따라가 봅시다. 매크로에 정의된 대로, <fc #0000FF>"v7_coherent_kern_range"</fc>를 따라갑니다.
+>
+> 같은 파일에 정의되어 있는걸 쉽게 확인 가능하네요. (arch/arm/mm/cache-v7.S)
+> <sxh c; toolbar:false;>
+ENTRY(v7_coherent_kern_range)
+        /* FALLTHROUGH */
+
+/*
+ *      v7_coherent_user_range(start,end)
+ *
+ *      Ensure that the I and D caches are coherent within specified
+ *      region.  This is typically used when code has been written to
+ *      a memory region, and will be executed.
+ *
+ *      - start   - virtual start address of region
+ *      - end     - virtual end address of region
+ *
+ *      It is assumed that:
+ *      - the Icache does not read data from the write buffer
+ */
+ENTRY(v7_coherent_user_range)
+ UNWIND(.fnstart                )
+        dcache_line_size r2, r3
+        sub     r3, r2, #1
+        bic     r12, r0, r3
+</sxh>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) coherence의 단어 뜻이 어떻게 되나요?  **  </typo>
+----
+> 어떤 의도로 여쭤보신 건지는 모르겠는데, 일단 질문이 나와서 정리합니다.
+>
+> 실무에서는 어떻게 구분하시는지 잘 모르지만, 아카데믹하게는 용어를 coherence와 consistency로 구분하여 정의합니다.
+> 일단 둘다 사전적의미는 일관성입니다. 하지만 조금 다른 뉘앙스를 갖고 있습니다.
+>
+> **coherence**는 28주차에서 설명한 MESI 프로토콜 처럼, CPU가 memory에 어떻게 update를 하더라도 일관성이 유지되는 것을 말합니다.
+> **consistency**는 28주차에서 설명한 strongly-ordered와 같이, 순서까지 보장하는 일관성을 의미합니다.
+>
+> 보통 이 둘의 차이를, coherence는 how로, consistency는 when으로 구분하고는 합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 7) UNWIND, .fnstart가 처음 나왔습니다. 정리가 필요합니다. **  </typo>
+<sxh c; toolbar:false;>
+ UNWIND(.fnstart                )
+        dcache_line_size r2, r3
+        sub     r3, r2, #1
+        bic     r12, r0, r3
+#ifdef CONFIG_ARM_ERRATA_764369
+        ALT_SMP(W(dsb))
+        ALT_UP(W(nop))
+#endif
+</sxh>
+----
+> 먼저 UNWIND는 다음과 같의 정의됩니다.
+> (ref.: [[http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0473c/CIAGJCAH.html | Exception tables and Unwind tables]])
+>
+> <wrap em>Unwind tables contain debug frame information</wrap> which are also necessary for the handling of such exceptions. An exception can only propagate through a function with an unwind table
+>
+> 요약하면 스택 unwinding을 통해 디버그를 위한 기능이라 보시면 됩니다.
+>
+> .fnstart는 gcc manual에 <wrap em>Marks the start of a function with an unwind table entry</wrap>
+> 이라고 나와 있으므로, unwind 테이블에 시작지점이라고 보면 될 것 같습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 8) v7_coherent_kern_range에서 USER()의 경우 .pushsection에 9001f도 있는데 이건 무엇인가요? **  </typo>
+<sxh c; highlight: [5]; toolbar:false;>
+#define USER(x...)                              \
+9999:   x;                                      \
+        .pushsection __ex_table,"a";            \ 
+        .align  3;                              \
+        .long   9999b,9001f;                    \
+        .popsection
+</sxh>
+----
+> 9001은 cache-v7.S에 정의되어 있습니다.<del> ERRATA 코드로 보여 집니다.</del>
+> <sxh c; toolbar:false;>
+/*
+ * Fault handling for the cache operation above. If the virtual address in r0
+ * isn't mapped, fail with -EFAULT.
+ */
+9001:
+#ifdef CONFIG_ARM_ERRATA_775420
+        dsb
+#endif
+        mov     r0, #-EFAULT
+        mov     pc, lr
+</sxh>
+> 이해를 위해서는 전체 맥락을 보고 분석해야 한다.
+> v7_coherent_user_range()는 2개의 리턴 지점이 있다 9001 label 바로 전과 위의 코드에 보이는 label 이후 세번째 명령어이다.
+>
+> 이상하지 않은가? 9001로 분기하는 코드가 없는데 왜 리턴이 있을까?
+> 9001 label 이후 코드는 리턴값으로 에러코드를 넘기고 있다.
+> 즉 하나는 정상적인 리턴이고 하나는 에러처리용 리턴이다.
+>> 위의 주석은 MVA가 mapping되지 않은 경우 cache operation에 대한 fault 처리라고 되어 있다.
+> 정리하면,
+> dcache clean 및 icache invalidate cp15명령은 잘못된 address에 대해 수행시 exception 발생 가능성이 있다. 이 경우 exception handler 처리후 돌아 올때 PC를 exception이 발생한 곳이 아닌 9001 label로 변경하고 return(r0)를 -EFAULT로 설정하기 위한 코드이다.
+> 해당 동작을 위해 <nowiki>__ex_table</nowiki>은 exception이 발생하는 주소와 exception 처리후 돌아갈 PC를 저장하고 나중에 fixup_exception()에 의해 리턴시 PC를 변경하는 용도로 사용된다.
+> 이를 위해 push_section을 통해 cache 관련 instruction과 에러처리 코드의 주소를 pair로 저장한 array 형태의 <nowiki>__ex_table</nowiki>을 만든 것이다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 9) 현재까지만 보면 page table에서 vector주소가 존재하는 영역을 중복 지정했는데, 이렇게 사용 가능한가요? **  </typo>
+----
+> create_mapping() 함수를 지금까지 총 2번 호출했는데, 첫 번째 호출에서는 물리 주소 0x4000_0000 ~ 0x6F80_0000를 0xC000_0000 ~ 0xEF80_0000로 매핑하는 section table을 만들었습니다.
+>
+> 두 번째 호출에서는 8KB만큼 확보한 영역 중 4KB인 0x6F7F_E000 ~ 0x6F7F_F000을 0xFFFF_0000 ~ 0xFFFF_1000로 매핑하는 section table을 만들었습니다.
+>
+> 그러면 0x6F7F_E000 ~ 0x6F7F_F000에 해당하는 section이 2개가 생기는데 이렇게 해도 되느냐는 것이었고, 토론 결론은 해도 된다는 것이었습니다.
+>
+> 금주 스터디에서 조금 더 확인 요망  FIXME
+</WRAP>
+
+</box>
+\\
+\\
+\\

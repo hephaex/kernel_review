@@ -1,0 +1,939 @@
+##### ARM10C   : 104 주차 
+##### 일시     : 2015.06.06 (104 주차 스터디 진행)
+##### 모임명   : NAVER개발자커뮤니티지원_IAMROOT.ORG_10차ARM-C
+##### 장소     : 토즈 타워점
+##### 장소지원 : NAVER 개발자 커뮤니티 지원 프로그램
+##### 참여인원 :  2명
+============
+
+## 104 주차 진도
+
+```
+1  1 start_kernel        1  ~/kernel/iamroot/linux-stable/init/main.c
+2  2 sched_clock_postinit   750  ~/kernel/iamroot/linux-stable/init/main.c
+```
+
+## main.c::main.c()
+* called: start_kernel()
+
+```main.c
+asmlinkage void __init start_kernel(void)
+{
+...
+	time_init();
+	// timer 를 사용하기 위한 clk source, clk_table 메모리 할당 및 초기화,
+	// timer event를 위한 timer irq (MCT) 초기화 수행
+
+    sched_clock_postinit();
+```
+
+* call: start_kernel()->sched_clock_postinit()
+
+## sched_clock.c::sched_clockinit()
+* called: start_kernel()->sched_clock_postinit()
+
+```sched_clock.c
+// ARM10C 20150530
+void __init sched_clock_postinit(void)
+{
+	/*
+	 * If no sched_clock function has been provided at that point,
+	 * make it the final one one.
+	 */
+	// read_sched_clock: jiffy_sched_clock_read
+	if (read_sched_clock == jiffy_sched_clock_read)
+		// BITS_PER_LONG: 32, HZ: 100
+		sched_clock_register(jiffy_sched_clock_read, BITS_PER_LONG, HZ);
+
+		// sched_clock_register에서 한일:
+		// read_sched_clock: jiffy_sched_clock_read
+		// sched_clock_mask: 0xFFFFFFFF
+		// cd.rate: 100
+		// cd.epoch_ns: 0
+		// cd.epoch_cyc: 0
+		// cd.wrap_kt: 0x42C1D83B9ACA00
+		// (&cd)->mult: 0x98968000
+		// (&cd)->shift: 8
+		// (&cd.seq)->sequence: 2
+
+	update_sched_clock();
+
+	// update_sched_clock에서 한일:
+	// cd.epoch_ns: 0
+	// cd.epoch_cyc: 0
+	// (&cd.seq)->sequence: 4
+
+	/*
+	 * Start the timer to keep sched_clock() properly updated and
+	 * sets the initial epoch.
+	 */
+	// CLOCK_MONOTONIC: 1, HRTIMER_MODE_REL: 1
+	hrtimer_init(&sched_clock_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
+	// hrtimer_init에서 한일:
+	// sched_clock_timer의 값을 0으로 초기화
+	// (&sched_clock_timer)->base: &hrtimer_bases->clock_base[0]
+	// RB Tree의 &(&sched_clock_timer)->node 를 초기화
+
+	sched_clock_timer.function = sched_clock_poll;
+	// sched_clock_timer.function: sched_clock_poll
+
+// 2015/05/30 종료
+
+	// cd.wrap_kt: 0x42C1D83B9ACA00, HRTIMER_MODE_REL: 1
+	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+
+## sched_clock.c::sched_clock_register()
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+
+```
+// ARM10C 20150530
+// &sched_clock_timer, cd.wrap_kt: 0x42C1D83B9ACA00, HRTIMER_MODE_REL: 1
+int
+hrtimer_start(struct hrtimer *timer, ktime_t tim, const enum hrtimer_mode mode)
+{
+	// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, mode: 1
+	return __hrtimer_start_range_ns(timer, tim, 0, mode, 1);
+}
+EXPORT_SYMBOL_GPL(hrtimer_start);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()->__hrtimer_start_range_ns()
+
+## hrtimer.c::__hrtimer_start_range_ns()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()->__hrtimer_start_range_ns()
+
+```hrtimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+  
+### hrtimer.c::lock_hrtimer_base()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+
+```httimer.c
+static
+struct hrtimer_clock_base *lock_hrtimer_base(const struct hrtimer *timer,
+					     unsigned long *flags)
+{
+	struct hrtimer_clock_base *base;
+
+	for (;;) {
+		base = timer->base;
+		if (likely(base != NULL)) {
+			raw_spin_lock_irqsave(&base->cpu_base->lock, *flags);
+			if (likely(base == timer->base))
+				return base;
+			/* The timer has migrated to another CPU: */
+			raw_spin_unlock_irqrestore(&base->cpu_base->lock, *flags);
+		}
+		cpu_relax();
+	}
+}
+```
+
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+
+##
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+	
+```httimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+
+	/* Remove an active timer from the queue: */
+	ret = remove_hrtimer(timer, base);
+```
+
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+  - ->remove_hrtimer()
+    - return: &hrtimer_base->clock_base[0], flags
+  - remove_hrtimer()
+
+### hrtimer.c::remove_hrtimer()
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+
+
+```hrtimer.c
+static inline int
+remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base)
+{
+	if (hrtimer_is_queued(timer)) {
+		unsigned long state;
+		int reprogram;
+
+		/*
+		 * Remove the timer and force reprogramming when high
+		 * resolution mode is active and the timer is on the current
+		 * CPU. If we remove a timer on another CPU, reprogramming is
+		 * skipped. The interrupt event on this CPU is fired and
+		 * reprogramming happens in the interrupt handler. This is a
+		 * rare case and less expensive than a smp call.
+		 */
+		debug_deactivate(timer);
+		timer_stats_hrtimer_clear_start_info(timer);
+		reprogram = base->cpu_base == &__get_cpu_var(hrtimer_bases);
+		/*
+		 * We must preserve the CALLBACK state flag here,
+		 * otherwise we could move the timer base in
+		 * switch_hrtimer_base.
+		 */
+		state = timer->state & HRTIMER_STATE_CALLBACK;
+		__remove_hrtimer(timer, base, state, reprogram);
+		return 1;
+	}
+	return 0;
+}
+```
+
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+
+## hrtimer.c::__hrtimer_start_range_ns()
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+
+```hrtimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+
+	/* Remove an active timer from the queue: */
+	ret = remove_hrtimer(timer, base);
+
+	/* Switch the timer base, if necessary: */
+	new_base = switch_hrtimer_base(timer, base, mode & HRTIMER_MODE_PINNED);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+
+### hrtimer.c::switch_hrtimer_base()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+
+```hrtimer.c
+static inline struct hrtimer_clock_base *
+switch_hrtimer_base(struct hrtimer *timer, struct hrtimer_clock_base *base,
+		    int pinned)
+{
+	struct hrtimer_clock_base *new_base;
+	struct hrtimer_cpu_base *new_cpu_base;
+	int this_cpu = smp_processor_id();
+	int cpu = hrtimer_get_target(this_cpu, pinned);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+
+#### hrtimer.c::hrtimer_get_target()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	-> hrtimer_get_target()
+
+```hrtimer.c
+static int hrtimer_get_target(int this_cpu, int pinned)
+{
+#ifdef CONFIG_NO_HZ_COMMON
+	if (!pinned && get_sysctl_timer_migration() && idle_cpu(this_cpu))
+		return get_nohz_timer_target();
+#endif
+	return this_cpu;
+}
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+
+##### core.c::idle_cpu()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	  
+```core.c
+int idle_cpu(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+
+	if (rq->curr != rq->idle)
+		return 0;
+
+	if (rq->nr_running)
+		return 0;
+
+#ifdef CONFIG_SMP
+	if (!llist_empty(&rq->wake_list))
+		return 0;
+#endif
+
+	return 1;
+}
+```
+
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	  - return 1
+
+#### hrtimer.c::hrtimer_get_target()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	  - return 1
+
+```hrtimer.c
+static int hrtimer_get_target(int this_cpu, int pinned)
+{
+#ifdef CONFIG_NO_HZ_COMMON
+    // pinned:
+	// get_sysctl_timer_migration(): 
+    // idle_cpu(this_cpu: 0): 1
+	if (!pinned && get_sysctl_timer_migration() && idle_cpu(this_cpu))
+		return get_nohz_timer_target();
+#endif
+	return this_cpu;
+}
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+
+##### core.c::get_nohz_timer_target()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+
+```core.c
+int get_nohz_timer_target(void)
+{
+	int cpu = smp_processor_id();
+	int i;
+	struct sched_domain *sd;
+
+	rcu_read_lock();
+	for_each_domain(cpu, sd) {
+	    // 
+		for_each_cpu(i, sched_domain_span(sd)) {
+		// 
+			if (!idle_cpu(i)) {
+				cpu = i;
+				goto unlock;
+			}
+		}
+	}
+unlock:
+	rcu_read_unlock();
+	return cpu;
+}
+```
+
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+		
+### hrtimer.c::switch_hrtimer_base()
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+
+```hrtimer.c
+static inline struct hrtimer_clock_base *
+switch_hrtimer_base(struct hrtimer *timer, struct hrtimer_clock_base *base,
+		    int pinned)
+{
+	struct hrtimer_clock_base *new_base;
+	struct hrtimer_cpu_base *new_cpu_base;
+	int this_cpu = smp_processor_id();
+	int cpu = hrtimer_get_target(this_cpu, pinned);
+	int basenum = base->index;
+
+again:
+	new_cpu_base = &per_cpu(hrtimer_bases, cpu);
+	new_base = &new_cpu_base->clock_base[basenum];
+
+	if (base != new_base) {
+		/*
+		 * We are trying to move timer to new_base.
+		 * However we can't change timer's base while it is running,
+		 * so we keep it on the same CPU. No hassle vs. reprogramming
+		 * the event source in the high resolution case. The softirq
+		 * code will take care of this when the timer function has
+		 * completed. There is no conflict as we hold the lock until
+		 * the timer is enqueued.
+		 */
+		if (unlikely(hrtimer_callback_running(timer)))
+			return base;
+
+		/* See the comment in lock_timer_base() */
+		timer->base = NULL;
+		raw_spin_unlock(&base->cpu_base->lock);
+		raw_spin_lock(&new_base->cpu_base->lock);
+
+		if (cpu != this_cpu && hrtimer_check_target(timer, new_base)) {
+			cpu = this_cpu;
+			raw_spin_unlock(&new_base->cpu_base->lock);
+			raw_spin_lock(&base->cpu_base->lock);
+			timer->base = base;
+			goto again;
+		}
+		timer->base = new_base;
+	}
+	return new_base;
+}
+```
+
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+
+## hrtimer.c::__hrtimer_start_range_ns()
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  
+```hrtimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+
+	/* Remove an active timer from the queue: */
+	ret = remove_hrtimer(timer, base);
+
+	/* Switch the timer base, if necessary: */
+	new_base = switch_hrtimer_base(timer, base, mode & HRTIMER_MODE_PINNED);
+
+	if (mode & HRTIMER_MODE_REL) {
+		tim = ktime_add_safe(tim, new_base->get_time());
+
+#ifdef CONFIG_TIME_LOW_RES
+		tim = ktime_add_safe(tim, base->resolution);
+#endif
+	}
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  
+### hrtimer.c::ktime_add_safe()
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+
+```hrtimer.c
+ktime_t ktime_add_safe(const ktime_t lhs, const ktime_t rhs)
+{
+	ktime_t res = ktime_add(lhs, rhs);
+
+	/*
+	 * We use KTIME_SEC_MAX here, the maximum timeout which we can
+	 * return to user space in a timespec:
+	 */
+	if (res.tv64 < 0 || res.tv64 < lhs.tv64 || res.tv64 < rhs.tv64)
+		res = ktime_set(KTIME_SEC_MAX, 0);
+
+	return res;
+}
+
+EXPORT_SYMBOL_GPL(ktime_add_safe);
+```
+
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+
+## hrtimer.c::__hrtimer_start_range_ns()
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  
+```hrtimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+
+	/* Remove an active timer from the queue: */
+	ret = remove_hrtimer(timer, base);
+
+	/* Switch the timer base, if necessary: */
+	new_base = switch_hrtimer_base(timer, base, mode & HRTIMER_MODE_PINNED);
+
+	if (mode & HRTIMER_MODE_REL) {
+		tim = ktime_add_safe(tim, new_base->get_time());
+
+#ifdef CONFIG_TIME_LOW_RES
+		tim = ktime_add_safe(tim, base->resolution);
+#endif
+	}
+	
+	hrtimer_set_expires_range_ns(timer, tim, delta_ns);
+
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - hrtimer_set_expires_range_ns()
+
+### hrtimer.h::hrtimer_set_expires_range_ns()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - hrtimer_set_expires_range_ns()
+
+```hrtimer.h
+static inline void hrtimer_set_expires_range_ns(struct hrtimer *timer, ktime_t time, unsigned long delta)
+{
+	timer->_softexpires = time;
+	timer->node.expires = ktime_add_safe(time, ns_to_ktime(delta));
+}
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - hrtimer_set_expires_range_ns()
+    - ktime_add_safe()
+
+## hrtimer.c::__hrtimer_start_range_ns()
+* return: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  
+```hrtimer.c
+// ARM10C 20150530
+// timer: &sched_clock_timer, tim: 0x42C1D83B9ACA00, 0, mode: 1, 1
+int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+		unsigned long delta_ns, const enum hrtimer_mode mode,
+		int wakeup)
+{
+	struct hrtimer_clock_base *base, *new_base;
+	unsigned long flags;
+	int ret, leftmost;
+
+	base = lock_hrtimer_base(timer, &flags);
+
+	/* Remove an active timer from the queue: */
+	ret = remove_hrtimer(timer, base);
+
+	/* Switch the timer base, if necessary: */
+	new_base = switch_hrtimer_base(timer, base, mode & HRTIMER_MODE_PINNED);
+
+	if (mode & HRTIMER_MODE_REL) {
+		tim = ktime_add_safe(tim, new_base->get_time());
+
+#ifdef CONFIG_TIME_LOW_RES
+		tim = ktime_add_safe(tim, base->resolution);
+#endif
+	}
+	
+	hrtimer_set_expires_range_ns(timer, tim, delta_ns);
+	
+	timer_stats_hrtimer_set_start_info(timer);
+
+	leftmost = enqueue_hrtimer(timer, new_base);
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - enqueue_hrtimer()
+
+### hrtimer.c::enqueue_hrtimer()
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - enqueue_hrtimer()
+
+```hrtimer.c
+static int enqueue_hrtimer(struct hrtimer *timer,
+			   struct hrtimer_clock_base *base)
+{
+	debug_activate(timer);
+
+	timerqueue_add(&base->active, &timer->node);
+	base->cpu_base->active_bases |= 1 << base->index;
+
+	/*
+	 * HRTIMER_STATE_ENQUEUED is or'ed to the current state to preserve the
+	 * state of a possibly running callback.
+	 */
+	timer->state |= HRTIMER_STATE_ENQUEUED;
+
+	return (&timer->node == base->active.next);
+}
+```
+
+* call: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - enqueue_hrtimer()
+    - timerqueue_add()
+	
+#### timerqueue.c::timerqueue_add()
+* called: start_kernel()->sched_clock_postinit()->hrtimer_start()
+ - ->__hrtimer_start_range_ns()
+  - ->lock_hrtimer_base()
+    - return: &hrtimer_base->clock_base[0], flags
+  - ->remove_hrtimer()
+    - ret: 0
+  - ->switch_hrtimer_base()
+    - cpu = hrtimer_get_target(this_cpu, pinned);
+	- -> hrtimer_get_target()
+      - idle_cpu()
+	    - return 1
+	  - get_nohz_timer_target();
+  - ktime_add_safe()
+  - enqueue_hrtimer()
+    - timerqueue_add()
+
+```timerqueue.c
+void timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
+{
+	struct rb_node **p = &head->head.rb_node;
+	struct rb_node *parent = NULL;
+	struct timerqueue_node  *ptr;
+
+	/* Make sure we don't add nodes that are already added */
+	WARN_ON_ONCE(!RB_EMPTY_NODE(&node->node));
+
+	while (*p) {
+		parent = *p;
+		ptr = rb_entry(parent, struct timerqueue_node, node);
+		if (node->expires.tv64 < ptr->expires.tv64)
+			p = &(*p)->rb_left;
+		else
+			p = &(*p)->rb_right;
+	}
+	rb_link_node(&node->node, parent, p);
+	rb_insert_color(&node->node, &head->head);
+
+	if (!head->next || node->expires.tv64 < head->next->expires.tv64)
+		head->next = node;
+}
+EXPORT_SYMBOL_GPL(timerqueue_add);
+```
+
+
+
+# log
+* 1st log
+
+```
+   07692bc..b67cef4  master     -> origin/master
+Updating 07692bc..b67cef4
+Fast-forward
+README.md                      |   2 +
+arch/arm/include/asm/barrier.h |   1 +
+include/asm-generic/current.h  |   1 +
+include/asm-generic/percpu.h   |   1 +
+include/linux/compiler.h       |   2 +
+include/linux/hrtimer.h        |  20 +++++++
+include/linux/irqflags.h       |   1 +
+include/linux/ktime.h          |   9 ++++
+include/linux/llist.h          |   5 ++
+include/linux/lockdep.h        |   2 +
+include/linux/rbtree.h         |   6 +++
+include/linux/rcupdate.h       |  32 +++++++++++
+include/linux/sched.h          |   2 +
+include/linux/sched/sysctl.h   |   5 +-
+include/linux/smp.h            |   1 +
+include/linux/spinlock.h       |   2 +
+include/linux/timerqueue.h     |   1 +
+include/trace/events/timer.h   |   2 +
+kernel/hrtimer.c               | 118 ++++++++++++++++++++++++++++++++++++++---
+kernel/locking/lockdep.c       |  34 +++++++++++-
+kernel/rcu/update.c            |   4 ++
+kernel/sched/core.c            |  38 +++++++++++--
+kernel/sched/sched.h           |  14 ++++-
+kernel/time/sched_clock.c      |   1 +
+kernel/time/timekeeping.c      |   1 +
+lib/timerqueue.c               |  16 ++++++
+26 files changed, 308 insertions(+), 13 deletions(-)
+```

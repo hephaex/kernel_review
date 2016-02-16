@@ -1,0 +1,668 @@
+==== 26주차(2013.10.19) ====
+<box center round blue 95% | <typo fs:18px;> ** 1. setup_arch()->parse_early_param()  ** </typo>>
+\\
+{{ :스터디:parse_early_param.jpg?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) 왜 local로 static을 선언 했을까요?   **  </typo>
+<code c>
+        static __initdata int done = 0;
+        static __initdata char tmp_cmdline[COMMAND_LINE_SIZE];
+
+        if (done)
+                return;
+</code>
+----
+> local static은 지역변수중 값의 유지가 필요한 변수에 사용한다. (예: count)
+> 따라서 done변수는 parse_early_param을 2회 이상 호출시 중복 수행 방지 용도이다.
+> 이슈는 왜 tmp_cmdline를 local static으로 사용했는가? 이다.
+> tmp_cmdline는 static 선언은 thread stack과 관련되어 있다.
+> stack은 thread_info와 union되어 있다.
+<code c>
+union thread_union {
+  struct thread_info thread_info;
+  unsigned long stack[THREAD_SIZE/sizeof(long)];
+};
+</code>
+> 몇가지 사실을 정리해보자.
+>   * thread_info가 1kB이상으로 매우 크다.
+>   * 현재 thread stack은 8kB이나 일부 architecture의 경우 4kB를 사용한다. (config 4KSTACKS참고)
+>   * tmp_cmdline은 2kB이다.
+> non-static local variable은 stack에 잡히므로 4kB stack에서 tmp_cmdline을 지역변수로 사용하면
+> 여유 공간이 적어 overwrite 가능성이 있다.
+> 따라서 static 선언으로 전역변수와 같이 bss영역 등에 잡히도록 조정한 것이다.
+> 일반코드를 저렇게 만들면 불필요한 메모리 점유가 발생하겠으나 해당 영역은 
+> <nowiki>__initdata attribute를 통해 init 과정이후 삭제되므로 낭비되지 않는다.</nowiki>
+
+
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) skip_spaces()함수의 역할이 무엇일까요?   **  </typo>
+<code c>
+/* Chew leading spaces */
+char *skip_spaces(const char *str)
+{
+        while (isspace(*str))
+                ++str;
+        return (char *)str;
+}
+</code>
+----
+> isspace()는 공백을 감지하는 함수 입니다. 
+> skip_spaces()는 문자열에서 앞에있는 공백을 제거하는 기능을 가집니다.
+>
+> Chew는 말 그대로 공백을 씹어 먹는다고 보면 될것 같습니다. 주석이 참 재밌네요 =)
+> 아래는 "   console=ttySAC2,115200 init=/linuxrc" 문자열을 돌려본 결과 입니다.
+> <code c>
+jin@jin-desktop:~/dev/test$ ./isspace 
+before =    console=ttySAC2,115200 init=/linuxrc
+after = console=ttySAC2,115200 init=/linuxrc
+</code>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) args 값을 무엇으로 봐야 할까요? dtb에서 넘어온게 맞나요?  **  </typo>
+<code c>
+int parse_args(const char *doing,
+               char *args,
+               const struct kernel_param *params,
+               unsigned num,
+               s16 min_level,
+               s16 max_level,
+               int (*unknown)(char *param, char *val, const char *doing))
+</code>
+<code c>
+if (*args)
+   pr_debug("doing %s, parsing ARGS: '%s'\n", doing, args);
+</code>
+----
+> 그냥 값만 적을려 했는데, 소스 드라이빙 하시는 분(누구?)이 후기에 정리가 안 되어있어서 몰랐다고 하셔서 정리합니다.LOL
+> <del>(전 뒤끝 없으니깐요...)</del>
+>
+> {{ :스터디:args_value.png?direct |}}
+>
+> ①: args값은 cmdline 포인터 변수를 통해, tmp_cmdline 배열값을 가르치고 있습니다.
+>
+> ②: tmp_cmdline는 boot_command_line을 복사한 값이네요. 그럼 boot_command_line은 어디서 왔나요?
+>
+> ③~④: 지겹게 공부한 of_scal_flat_dt()의 callback 함수인 <wrap em>early_init_dt_scan_chosen()</wrap>에서 사용함을 알 수 있습니다.
+>
+> ⑤: 이 값은 포인터 변수 p의 값을 복사했네요.
+>
+> ⑥: node의 "bootargs" property(벌써 까먹은건 아니죠?8-))를 찾아서 값을 저장했습니다.
+>
+> ⑦: 이 값은 "console=ttySAC2,115200 init=/linuxrc" 라고 되어있네요.
+>
+> args = <wrap em>"console=ttySAC2,115200 init=/linuxrc"</wrap> 입니다!
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) *next_arg()함수의 역할이 무엇인가요?  **  </typo>
+<code c>
+static char *next_arg(char *args, char **param, char **val)
+{
+        unsigned int i, equals = 0;
+        int in_quote = 0, quoted = 0;
+        char *next;
+
+        if (*args == '"') {
+                args++;
+                in_quote = 1;
+                quoted = 1;
+        }       
+                        
+        // equals 값은 "=" string index 값
+        for (i = 0; args[i]; i++) {
+                if (isspace(args[i]) && !in_quote)
+                        break;
+                if (equals == 0) {
+                        if (args[i] == '=')
+                                equals = i;
+                }
+                if (args[i] == '"')
+                        in_quote = !in_quote;
+        }       
+                
+        *param = args;
+        if (!equals)
+                *val = NULL; 
+        else {          
+                args[equals] = '\0';
+                *val = args + equals + 1; 
+                
+                /* Don't include quotes in value. */
+                if (**val == '"') {
+                        (*val)++;
+                        if (args[i-1] == '"')
+                                args[i-1] = '\0';
+                }
+                if (quoted && args[i-1] == '"')
+                        args[i-1] = '\0';
+        }
+
+        if (args[i]) {
+                args[i] = '\0';
+                next = args + i + 1;
+        } else
+                next = args + i;
+
+        /* Chew up trailing spaces. */
+        return skip_spaces(next);
+}
+</code>
+----
+> 먼저 args값은 다음과 같이 들어갑니다. console=ttySAC2,115200 init=/linuxrc
+>>
+>> dts에서 bootargs = "console=ttySAC2,115200 init=/linuxrc"와 같이 입력할 때 <wrap em>bootargs property는 value에 "를 포함하지 않습니다.</wrap>
+>>  여기서의 "(쌍따옴표)는 value가 string임을 알리는 syntax로 실제 dtb에는 존재하지 않습니다.
+>>
+>
+> 결론부터 얘기하면, <fc #0000FF>param: console</fc>, <fc #008000>val: ttySAC2,115200</fc>, <fc #800080>next: init=/linuxrc</fc> 와 같이 할당됩니다.
+> 그리고 다음 loop에서 init=/linuxrc는 다시 <fc #0000FF>param: init</fc>, <fc #008080>val: /linuxrc</fc>로 할당 됩니다.
+>
+> 간단하게 console=ttySAC2,115200 init=/linuxrc 를 가지고 동작을 살펴보면 다음과 같습니다.
+>
+> {{  :스터디:next_args_sol3.png?direct&500  |}}
+>
+> {{  :스터디:next_args_sol4.png?direct  |}}
+>
+> ①: 초기값은 오른쪽 배열과 같이 구성되어 있습니다.
+>
+> ②: 처음 args의 값이 'c'이므로, if문으로 들어가지 않습니다.
+>
+> ③: index를 전부 돌며, 1) "가 아직 없었지만 스페이스가 있는 경우, 2) equals가 어느 index에 들어있는지, 3) "를 체크 합니다. 여기서 <fc #0000FF>i=7일때 equals</fc>가 있으므로 equals에 7을 저장하고, <fc #0000FF>i=22일때 space가 있으므로, break를 수행</fc>합니다.
+>
+> ④: *param = args의 주소를 저장하지만, 아직은 전체 문자열 console=ttySAC2,115200 init=/linuxrc 이 저장되어 있습니다.
+>
+> ⑤: equals가 있던 index에 '\0'을 저장하여, param은 '\0'까지의 문자열을 갖게 됩니다. *val은 equals index 다음부터 끝까지 문자열을 포함합니다.(마찬가지로 현재는 next의 문자열까지 포함: ttySAC2,115200 init=/linuxrc)
+>
+> ⑥: 위의 if문들은 해당 case에는 적용되지 않아 패스합니다. 현재 index에 '\0'를 저장하여 *val과 *next를 구분하고, 결국 <wrap em>param: console, val:ttySAC2,115200, next: init=/linuxrc</wrap> 와 같이 됩니다.
+>
+>
+>
+> 그럼 다른 분기는 언제 적용되는지 아래 3개의 case를 가지고 알아봅시다.
+>
+> ** • case #1: console="ttySAC2,115200" **
+> ** • case #2: "console=ttySAC2,115200" **
+> ** • case #3:  "console="ttySAC2,115200"" **
+>
+>{{ :스터디:next_args5.png?direct&500 |}}
+> 위 그림에서 같이 case #1, case #2는 분기되는 곳이 다르기는 하지만, 정상적으로 param, val값을 얻을 수 있습니다.
+> 하지만, case #3의 경우에는 "가 2개 있어서 param과 val값이 비정상적으로 출력됩니다.
+>
+> 따라서 case #1, case #2와 같은 표기 방식을 사용하면 문제 없습니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) do_early_param()가 어떻게 동작하는가요?  **  </typo>
+<code c>
+static int __init do_early_param(char *param, char *val, const char *unused)
+{
+        const struct obs_kernel_param *p; 
+
+        for (p = __setup_start; p < __setup_end; p++) {
+                if ((p->early && parameq(param, p->str)) ||
+                    (strcmp(param, "console") == 0 &&
+                     strcmp(p->str, "earlycon") == 0)
+                ) { 
+                        if (p->setup_func(val) != 0)
+                                pr_warn("Malformed early option '%s'\n", param);
+                }   
+    ...
+</code>
+----
+> <nowiki>__setup_start, __setup_end는 *(.init.setup) section의 시작과 끝에 대한</nowiki> 
+> symbol이다.(vmlinux.lds참고)
+> <nowiki>.init.setup section은 __setup_param() MACRO에 의해 obs_kernel_param 구조체</nowiki> 
+> <nowiki>형태로 생성되며 __setup_param() MACRO는 _setup() 매크로(obs_kernel_param.early=0)</nowiki>
+> <nowiki>혹은 early_param() 매크로(obs_kernel_param.early=1)에 의해 호출된다.</nowiki>
+<code c>
+#define __setup_param(str, unique_id, fn, early)      \
+  static const char __setup_str_##unique_id[] __initconst \
+    __aligned(1) = str; \
+  static struct obs_kernel_param __setup_##unique_id  \
+    __used __section(.init.setup)     \
+    __attribute__((aligned((sizeof(long)))))  \
+    = { __setup_str_##unique_id, fn, early }
+#define __setup(str, fn)          \
+  __setup_param(str, fn, fn, 0)
+#define early_param(str, fn)          \
+  __setup_param(str, fn, fn, 1)
+</code>
+> <nowiki>__setup(), early_param()은 커널 곳곳에 산재되어 있다.</nowiki>
+> 모두 분석하기에는 시간이 다량 소요되므로 여기서는 if조건에 따라 여러 코드중
+>   - 1. early=1이면서 bootargs의 param을 str으로 저장하는 매크로 또는
+>   - 2. bootargs param이 console인 경우 earlycon을 str으로 저장한 매크로만
+> 살펴본다.
+>
+> 1의 경우, early_param("console"...) 또는 early_param("init"...) 탐색결과 존재하지 않는다.
+> <nowiki>2의 경우, console param에 대하여 __setup("ealrycon"...)을 커널에서 탐색한 결과</nowiki>
+> ./drivers/tty/serial/8250/8250_early.c에 코드가 있으나 exynos의 object가 아니다.
+> 설령 compile한다 하더라도 8250 관련 함수(setup_early_serial8250_console())에서 
+> val이 uart, uart8250이 아닌 경우 return한다. 
+> exynos5420은 console의 value가 "ttySAC2,115200"이므로 수행하는 작업 없이 for문을 빠져나온다.
+>
+> <wrap em>결국 exynos5420은 do_early_param에서 하는 일이 없다.</wrap>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) irqs_disabled를 호출하였는데, 다시 체크하는 이유는 무엇일까요?  **  </typo>
+<code c>
+while (*args) {
+       int ret;
+       int irq_was_disabled;
+
+       args = next_arg(args, &param, &val);
+       irq_was_disabled = irqs_disabled();
+       ret = parse_one(param, val, doing, params, num,
+                       min_level, max_level, unknown);
+
+       if (irq_was_disabled && !irqs_disabled())
+               pr_warn("%s: option '%s' enabled irq's!\n",
+                       doing, param);
+</code>
+----
+> irq를 위에서 disable하였지만, 그 사이에 상태가 변경될 수 있다.
+> 그런 경우를 대비하여, 체크 구문을 넣은 것이다.
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 2. setup_arch()->sort()  ** </typo>>
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) meminfo_cmp()에서 주소값 기반의 정렬이 아닌, pfn(Page Fram Number)기반으로 정렬하는 이유는 무엇일까요?   **  </typo>
+<code c>
+static int __init meminfo_cmp(const void *_a, const void *_b) 
+{
+        const struct membank *a = _a, *b = _b;
+        long cmp = bank_pfn_start(a) - bank_pfn_start(b);
+        return cmp < 0 ? -1 : cmp > 0 ? 1 : 0; 
+}
+</code>
+<code c>
+#define bank_pfn_start(bank)    __phys_to_pfn((bank)->start)
+</code>
+<code c>
+// Convert a physical address to a Page Frame Number and back
+#define __phys_to_pfn(paddr)    ((unsigned long)((paddr) >> PAGE_SHIFT))
+</code>
+----
+> 주소값으로 정렬을 하면, 4기가에서 빼기 연산을 해야 하므로, 표현제한의 문제가 생길 수 있다.
+> 위와같은 문제는, pfn으로 SHIFT 연산을 사용하면 해결할 수 있다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) sort 알고리즘이 heap-sort로 되어 있네요. 학부때 배워서 기억이 안납니다.   **  </typo>
+----
+> heap sort는 tree 구조를 이용하여 최소 혹은 최대값 정렬한다. n*log(n) 복잡도
+> 일반적으로 사용하는 sort 특성은 아래와 같다.
+>   * quick sort의 경우 중간값을 잘 찾아야만 속도가 빠르나 최악의 경우 n^2 복잡도
+>   * merge sort의 경우 n*long(n)이나 다량의 메모리 공간 요구
+>   * insertion sort의 경우 random 상황이 아니라 이미 sort된 상황에서 추가하는 경우 사용
+> sort는 주어진 상황에 따라 적당한 sort를 골라서 사용한다.
+> 아래 wiki 또는 java 예 참고
+> [[http://en.wikipedia.org/wiki/Sorting_algorithm|wiki sort]]
+> [[http://www.eecs.wsu.edu/~cook/aa/lectures/applets/sort1/heapsort.html|java heap-sort animation]]
+
+
+
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 3. setup_arch()->sanity_check_meminfo()  ** </typo>>
+\\
+{{  :스터디:sanity_check_mminfo4.jpg?direct  |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) vmalloc_min의 의미가 무엇일까요? size라고 봐야 할까요?  **  </typo>
+<code c>
+static void * __initdata vmalloc_min =
+        (void *)(VMALLOC_END - (240 << 20) - VMALLOC_OFFSET);
+</code>
+----
+> VMALLOC_END는 0xff00_0000, VMALLOC_OFFSET은 0x0080_0000입니다.
+> 따라서 vmalloc_min은 0xef80_0000입니다.
+> 
+> start address 개념으로 보면 될것 같<del>고, offset 값이 조금 애매합니</del>다.> 
+> high memory는 240MB이고 8MB는 high memory와 normal memory사이의 보호를 위한 완충지대이다.
+> 생각해 볼 거리는 두가지다.
+>   - 왜 VMALLOC_END가 0xff00_0000일까?
+>   - 왜 240MB일까? 
+> 현재로서의 추측은 아래와 같다.
+>   - 0xff00_0000은 high exception vector가 존재하는 곳이므로 이 부분을 포함한 16MB를 제외한 것이다.
+>   - 256MB 중 16MB를 제외한 240MB이다. 
+> x86과 같이 896MB를 제외한 128MB를 highmem으로 사용하기에는 ARM에서 16MB가 추가로 
+> 제약되어 256MB로 align시킨 것으로 보인다. FIXME
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) 그럼 +1이 의미하는 바는 무엇일까요?  **  </typo>
+<code c>
+phys_addr_t vmalloc_limit = __pa(vmalloc_min - 1) + 1;
+</code>
+----
+> B팀에서 [[http://www.iamroot.org/xe/Kernel_10_ARM/183338 | 20주차]]에 언급한 이슈입니다.
+> 
+> <nowiki> __va, __pa </nowiki> 사용 전에 -1을 하는 이유는 <wrap em>이 값이 상한값(limit)이기 때문이다.</wrap>
+> limit가 0x20000000(512M) 인 경우 가용범위는 0 ~ 0x1fffffff 이다.
+>
+> 불연속적인 메모리 공간의 경우 엉뚱한 메모리 주소가 변환될 수 있다.
+> 예를들면 아래와 같은 두개의 512M 메모리 블럭을 가정해보자.
+> 0x00000000(phys) → 0xc0000000(virt)
+> 0x80000000(phys) → 0xe0000000(virt)
+> 
+> 경계지점인 512M의 limit를 변환할 때,
+> 0xe0000000를 변환하면 0x80000000이 되고 0xdfffffff를 변환하면 0x1fffffff이 된다. (by pororo)
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) vmalloc limit값이 <nowiki> __pa(vmalloc_min) </nowiki> 로 되어 있는데, vmalloc_min(0xef80_0000)을 물리주소로 바꾸면 어떻게 되나요?  **  </typo>
+----
+> 아래 code는 virtual을 physical주소로 바꾸는 code입니다. 오랫만에 보셔서 가물가물하시죠?
+> <code c>
+static inline unsigned long __virt_to_phys(unsigned long x)
+{
+        unsigned long t;
+        __pv_stub(x, t, "add", __PV_BITS_31_24);
+        return t;
+}
+</code>
+>
+> 간단하게 물리주소로 바꾸는 공식은 다음과 같습니다.
+> <code c>
+__virt_to_phys(x)       ((x) - PAGE_OFFSET + PHYS_OFFSET)
+</code>
+> 여기서 PAGE_OFFSET은 0xc000_0000, PHYS_OFFSET은 0x4000_0000이므로 다음과 같이 계산할 수 있습니다.
+>
+> (0xef80_0000) - 0xc000_0000 + 0x4000_0000 = <wrap em>0x6f80_0000</wrap> 입니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) highmem 이라는 것이, 예전에 리눅스 커널 내부구조에서 봤던 그 개념이 맞나요? **  </typo>
+----
+> 리눅스 커널 내부구조에서 언급했던 HIGHMEM은 물리메모리가 1G 이상일때, 896MB까지를 커널의 가상주소 공간과 1:1 연결해주고, 나머지 부분은 필요할 떄 동적으로 연결하여 사용하는 구조를 채택하는데, <fc #0000FF>896MB이상의 메모리 영역을 HIGHMEM이라고 지칭합니다.</fc>
+>
+> 하지만 이건 x86의 얘기이고, ARM은 조금 다릅니다.
+>
+> 먼저 9차 ARM팀에서 정리한 [[http://www.iamroot.org/xe/Kernel_9_ARM/184935 | ZONE_DMA, ZONE_NORMAL, ZONE_HIGHMEM]]를 참고하면, ZONE_DMA도 i386에서는 16MB영역이지만, <wrap em>ARM은 'Various(여러가지)'</wrap>를 확인할 수 있습니다.
+> <code c>
+#ifdef CONFIG_ZONE_DMA
+    /*
+     * ZONE_DMA is used when there are devices that are not able
+     * to do DMA to all of addressable memory (ZONE_NORMAL). Then we
+     * carve out the portion of memory that is needed for these devices.
+     * The range is arch specific.
+     *
+     * Some examples
+     *
+     * Architecture       Limit
+     * ---------------------------
+     * parisc, ia64, sparc  <4G
+     * s390           <2G
+     * arm            Various
+     * alpha      Unlimited or 0-16MB.
+     *
+     * i386, x86_64 and multiple other arches
+     *            <16M.
+     */
+</code>
+>
+> ARM에서는 위와같이 ZONE_DMA자체도 달라졌고, HIGHMEM도 x86에서 얘기하는 896MB가 아니라 소스를 확인해보면 <wrap em>"0xef80_0000" 이상을 HIGHMEM으로 보는게 맞습니다.</wrap>
+>
+> 그리고 kconfig의 HIGHMEM정의를 보면 다음과 같이 되어 있습니다.
+> 
+> The address space of ARM processors is only 4 Gigabytes large and it has to accommodate user address space, kernel address
+> space as well as some memory mapped IO. That means that, if you have a large amount of physical memory and/or IO, not all of the memory can be <fc #0000FF>"permanently mapped"</fc> by the kernel. <wrap em>The physical memory that is not permanently mapped is called "high memory".</wrap>
+>
+> Depending on the selected kernel/user memory split, minimum vmalloc space and actual amount of RAM, you may not need this option which should result in a slightly faster kernel.
+>
+> 요약하면 큰 memory나 IO의 경우에는 "permanently mapped"될 수 없고, 이 경우에 스위칭 해가면서 써야 하는데 이런 물리 메모리를 "high memory"라 정의합니다. 그리고 이 영역이 <fc #0000FF>우리한테는 "0xef80_0000"(760MB)입니다.</fc> 
+> [0xef80_0000-PAGE_OFFSET=760MB]
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) 메모리 뱅크가 2개라고 하면, 뱅크당 컨트롤러는 따로 있나요? **  </typo>
+----
+> 네 그렇습니다. 실제로 라인도 따로 나옵니다.
+>
+> 예를들어 노트북은 2개, 데탑이 4개 이상인 경우를 보면 각각 컨트롤러가 그만큼 있다고 보면 됩니다.
+> 실제로 컨트롤러가 많아지면 그만큼 칩의 크기가 늘어나므로, 사이즈를 고려해야 합니다.
+>
+> 메모리 뱅크에 대한 내용은 지난주 후기에 이미 언급하였으므로, 참고하시기 바랍니다. [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131012 | 25주차]] 1-13) 메모리 뱅크관련
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) memmove()함수는 memcpy()와 다른점이 뭔가요? **  </typo>
+----
+> memmove()는 memcpy()와 다르게 temp에 복사하고 저장하는 방식입니다.
+> 따라서 memcpy()보다는 속도가 좀 느리다고 볼 수 있습니다.
+>
+> 그대신 장점은 overlap되는 부분의 복사를 데이터 손실 없이 할 수 있습니다. 예제를 통해서 확인해 봅시다.
+> (예제는 [[http://www.borlandforum.com/impboard/impboard.dll?action=read&db=bcb_tip&no=826 | memcpy와 memmove의 차이점]] 의 code입니다.)
+>
+> <wrap em>1) memcpy를 하는 경우</wrap>
+> <code c>
+void __fastcall TForm1::FormCreate(TObject *Sender)
+{
+    enum { Size = 10};
+    int data[Size];
+    for(int c = 0; c < Size; c++)
+        data[c] = c; // test data 
+ 
+    memcpy(data, data + 1, sizeof(data) - sizeof(int)); // 1,2,3,4,5,6,7,8,9,9 이렇게 되죠.
+    memcpy(data + 1, data, sizeof(data) - sizeof(int)); // 1,1,1,1,1,1,1,1,1,1 이런 결과가 나옵니다.
+}
+</code>
+> <wrap em>2) memmove를 하는 경우</wrap>
+> <code c>
+void __fastcall TForm1::FormCreate(TObject *Sender)
+{
+    enum { Size = 10};
+    int data[Size];
+    for(int c = 0; c < Size; c++)
+        data[c] = c;
+ 
+    memmove(data, data + 1, sizeof(data) - sizeof(int)); // 1,2,3,4,5,6,7,8,9,9 이렇게 되죠.
+    memmove(data + 1, data, sizeof(data) - sizeof(int)); // 1,1,2,3,4,5,6,7,8,9 이렇게 됩니다.
+}
+</code> 
+> 이렇게 인접된 메모리의 경우 memmove를 사용하여 해결할 수 있습니다.
+> 
+> 자 이제 우리 code로 돌아오면 아래와 같이 되어 있었죠. 
+> <code c>
+   memmove(bank + 1, bank, (meminfo.nr_banks - i) * sizeof(*bank));
+</code>
+> 위의 code에서 현재 bank는 0이었고, bank+1에 장소에다가 복사를 하라고 했으니
+> [0, 1, 2, 3, 4, ...]의 순으로 bank가 저장되어 있었다면, [0, 0, 1, 2, 3, ...]로 저장됩니다.
+> (meminfo.nr_banks의 수가 크다는 조건. 만약 1이면, [0, 0, 2, 3, ....])
+>
+> 이 0, 0으로 겹치는 부분을 어떻게 고치는지 tp님이 매직을 부려서 보여주셨죠? 다 이해하셨으리라 생각합니다. 8-)
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 7) highmem bank의 계산과정 및 의미를 모르겠습니다. **  </typo>
+<code c>
+#ifdef CONFIG_HIGHMEM
+                /*
+                 * Split those memory banks which are partially overlapping
+                 * the vmalloc area greatly simplifying things later.
+                 */
+
+                if (!highmem && bank->size > size_limit) {
+                        if (meminfo.nr_banks >= NR_BANKS) {
+                                printk(KERN_CRIT "NR_BANKS too low, "
+                                                 "ignoring high memory\n");
+                        } else {
+                                memmove(bank + 1, bank,
+                                        (meminfo.nr_banks - i) * sizeof(*bank));
+                                meminfo.nr_banks++;
+                                i++;
+
+                                bank[1].size -= size_limit;
+                                bank[1].start = vmalloc_limit;
+                                bank[1].highmem = highmem = 1;
+                                j++;
+                        }
+                        bank->size = size_limit;
+                }
+</code>
+----
+> 자~ 멘붕일때는 어김없이 tp님의 매직이 시작됩니다.
+>
+> 하나씩 정리해 봅시다.
+> <wrap em>1) highmem용 bank를 위해, bank의 size와 size_limit의 비교</wrap>
+> 현재 bank의 size는 0x8000_0000 > 0x4f80_0000 이므로 다음 과정으로 넘어갑니다.
+> {{ :스터디:config_highmem_1.png?direct |}}
+>
+> <wrap em>2) 현재 bank의 수가 config로 설정된 NR_BANKS수보다 크면 에러를 출력</wrap>
+> meminfo.nr_banks가 설정된 8보다 작으므로 넘어갑니다.
+> {{ :스터디:config_highmem_2.png?direct |}}
+> 
+> <wrap em> 3-①) 위에서 언급한 memmove()를 통해 현재 bank를 bank[1]에 복사</wrap>
+> 지금은 단순히 복사 했기 때문에, bank[0]과 bank[1]이 같은값을 가지고 있습니다. 이제 이 값을 서로 다른 영역으로 분리해야 겠죠?
+>  {{ :스터디:config_highmem_3.png?direct |}}
+>
+> <wrap em>3-②) bank[1]의 값을 highmem영역으로 수정</wrap>
+> bank[1]은 이제 highmem =1로 설정하였지만, 아직 bank[0]과 영역이 겹치는 현상이 발생합니다.
+> {{ :스터디:config_highmem_4.png?direct |}}
+>
+> <wrap em>4) bank[0]의 size를 수정함으로, bank[1]과 구분</wrap>
+> PA-VA 주소 관계를 통해 0x6f80_0000이 0xef80_0000에 해당됨을 알 수 있습니다.
+> {{ :스터디:config_highmem_5.png?direct |}}
+>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 8) struct에서 어떻게 .으로 초기화를 할 수 있을까요? **  </typo>
+<code c>
+struct memblock memblock __initdata_memblock = {
+        .memory.regions         = memblock_memory_init_regions,
+        .memory.cnt             = 1,    /* empty dummy entry */
+        .memory.max             = INIT_MEMBLOCK_REGIONS,
+
+        .reserved.regions       = memblock_reserved_init_regions,
+        .reserved.cnt           = 1,    /* empty dummy entry */
+        .reserved.max           = INIT_MEMBLOCK_REGIONS,
+        
+        // MEMBLOCK_ALLOC_ANYWHERE: 0xffffffff
+        .current_limit          = MEMBLOCK_ALLOC_ANYWHERE,
+};
+</code>
+----
+> ANSI C standard를 살펴보자. C90에는 없었고 C99 표준에서 생겼다.
+> C99 표준중 다음을 보자. (N1256, ISO/IEC9899:TC3)
+<WRAP center round info 60%>
+6.7.8.7
+If a designator has the form
+    . identifier
+then the current object (defined below) shall have structure or union type and the identifier shall be the name of a member of that type
+</WRAP>
+> 6.7.8.34에 다음의 예가 있다.
+<WRAP center round info 60%>
+EXAMPLE 10 Structure members can be initialized to nonzero values without depending on their order:
+div_t answer = { .quot = 2, .rem = -1 };
+</WRAP>
+>
+> 참고1. 6.7.8.35는 더 복잡한 array 초기화에 대한 예가 있다.
+<WRAP center round info 60%>
+EXAMPLE 11 Designators can be used to provide explicit initialization when unadorned initializer lists might be misunderstood:
+struct { int a[3], b; } w[] =
+{[0].a = {1}, [1].a[0] = 2 };
+</WRAP>
+>
+> 참고2. C99는 variable length array도 지원한다.
+> 다음은 표준에 포함된 예이다.
+<code c>
+#include <stddef.h>
+size_t fsize3(int n)
+{
+  char b[n+3]; // variable length array
+  return sizeof b; // execution time sizeof
+}
+</code>
+>
+> 그러나 위의 코딩을 남용하지 말자.
+> C99를 완벽하게 지원하는 compiler가 없다 (심지어 GCC조차도...)
+> MS visual studio도 지원못하며 당연히 embedded 쪽은 사정이 더욱 안좋다.
+>
+> 저런 기능이 편하고 폼도 나겠지만 개인적으로 gnu 환경이 아니라면 (예: DSP 코딩) 
+> 지원하지 않는 compiler가 대다수이므로 기존 관습을 지키시는 것이 정신 건강에 좋아 보입니다.
+</WRAP>
+</box>
+\\
+
+<box center round blue 95% | <typo fs:18px;> ** 4. setup_arch()->arm_memblock_init()  ** </typo>>
+\\
+{{  :스터디:arm_memblock_init2.jpg?direct  |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) repeat: 구문의 역할이 무엇인가요?   **  </typo>
+<code c>
+repeat:
+        /*
+         * The following is executed twice.  Once with %false @insert and
+         * then with %true.  The first counts the number of regions needed
+         * to accomodate the new area.  The second actually inserts them.
+         */     
+        nr_new = 0;     
+                
+        // type->cnt: 1 
+        for (i = 0; i < type->cnt; i++) {
+                struct memblock_region *rgn = &type->regions[i];
+
+                phys_addr_t rbase = rgn->base;
+                phys_addr_t rend = rbase + rgn->size;
+                        
+                if (rbase >= end)
+                        break;  
+                if (rend <= base)                      
+                        continue;
+                /*
+                 * @rgn overlaps.  If it separates the lower part of new
+                 * area, insert that portion.
+                 */
+                if (rbase > base) {
+                        nr_new++;
+                        if (insert)
+                                memblock_insert_region(type, i++, base,
+                                                       rbase - base, nid);
+                }
+                /* area below @rend is dealt with, forget about it */
+                base = min(rend, end);
+        }
+
+</code>
+----
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131026 | 27주차]] 1-2) 항목으로 대체합니다.
+</WRAP>
+</box>
+\\
+
+
+
+
+
+
+\\
+\\
+\\

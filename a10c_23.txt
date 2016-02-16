@@ -1,0 +1,359 @@
+==== 23주차(2013.09.28) ====
+<box center round blue 95% | <typo fs:18px;> ** 1.  setup_arch()→setup_processor() ** </typo>>
+\\
+{{ :스터디:setup_processor_fin.png?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) 현재 사용하고 있는 processor가 VIPT인지, PIPT인지 어떻게 알 수 있나요? ** </typo>
+----
+> cacheid_init()함수에서 다음 code를 통해 Cache Type Register를 읽어 왔습니다.
+> <code c>
+unsigned int cachetype = read_cpuid_cachetype();
+</code>
+> A15의 경우 아래와 같이 PIPT임을 확인할 수 있습니다.
+> {{ :스터디:ctr.png?direct |}}
+>
+> 또는, TRM에 명시가 되어 있습니다.
+> {{ :스터디:a15_spec.png?direct |}}
+>
+> 실제 Exynos5420에서 확인결과 PIPT가 출력됩니다. (Dcache - PIPT / VIPT nonaliasing, ICache - PIPT)
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) NR_CPU값이 어디서 정의 되었나요? ** </typo>
+<code c>
+if (cpu >= NR_CPUS) {
+    printk(KERN_CRIT "CPU%u: bad primary CPU number\n", cpu);
+    BUG();
+}
+</code>
+----
+> 예전에도 언급되었던 내용이지만, .config 파일에 **"CONFIG_NR_CPU"**값이 명시되어 있습니다.
+>>
+>> 그렇다면 우리는 현재 exynos5420으로 진행하고 있는데, 왜 NR_CPU값이 2가 나오나요? 4가 나와야 정상 아닐까요?
+>>>
+>>> 듣고보니 그렇습니다. default는 2로 되어 있네요. 임의로 4로 고쳐서 진행하겠지만, 삼성 타겟 code를 살펴볼 필요가 있어 보입니다.
+>>>
+>>> {{ :스터디:nr_cpu.png?direct |}}
+>>>>
+>>>> 삼성에서 나온 5420 config 파일(오픈소스)에서 확인한 결과
+>>>> CONFIG_NR_CPUS=4 로 되어 있습니다. 
+>>>>
+>>>> 오픈소스는 다음 경로에서 확인 하였습니다. 
+>>>> 1) http://opensource.samsung.com/ 접속
+>>>> 2) P600 검색
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) per_cpu라는 용어가 계속 나오는 것으로 봐서, 단순한 네이밍은 아닌것 같습니다. ** </typo>
+<code c>
+#define per_cpu_offset(x) (__per_cpu_offset[x])
+</code>
+<code c>
+unsigned long __per_cpu_offset[NR_CPUS] __read_mostly;
+</code>
+----
+> percpu의 기본 개념은 상당히 단순하다. 어떤 자료 구조를 percpu를 통해 관리하고 싶다면,
+> 해당 객체를 시스템 내의 cpu 수 만큼의 배열로 생성하고 자기 cpu 번호에 맞는 원소만 참조하면 된다.
+> 
+> 하지만 커널은 효율성을 높이기 위해 이 방법 대신 커널 내부에는 한 벌의 데이터만을 유지하고,
+> 부팅 시에 이 영역들을 cpu 수 만큼 새로이 할당하여 사용한다.
+> (물론 이는 정적으로 선언된 percpu 데이터에 한한 것이다. 동적으로 할당되는 percpu 데이터는 처음부터 cpu 수 만큼의 크기가 할당된다.)
+>
+> 먼저 간단한 per_cpu_offset()를 살펴보자면 이는 부팅 시에 미리 계산되는 값으로,
+> 전체 percpu 영역 내에서 각 cpu 별로 실제 데이터가 존재하는 offset 값이다.
+>
+> (Ref. [[http://studyfoss.egloos.com/5375570  | [Linux] per-CPU 메모리 관리 (1)]])
+> (Ref. [[http://blog.naver.com/PostView.nhn?blogId=nix102guri&logNo=90098904482 | per-CPU 변수]])
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) set_my_cpu_offset() 함수의 동작이 전혀 이해가 안됩니다. ** </typo>
+<code c>
+static inline void set_my_cpu_offset(unsigned long off)
+{
+        /* Set TPIDRPRW */
+        asm volatile("mcr p15, 0, %0, c13, c0, 4" : : "r" (off) : "memory");
+}  
+</code>
+----
+> 위의 code 동작만 보면 off값(현재 0)을 TPIDRPRW에 저장하는 것입니다.
+>
+> 일단 TPIDRPRW의 기능은 ARM에 다음과 같이 명시되어 있습니다.
+>
+> "The <fc #0000FF>TPIDRPRW provides a location where software executing at PL1 or higher can store
+thread identifying information</fc> that is not visible to software executing at PL0, for OS management purposes."
+>
+> 즉, PL1에서 thread ID를 저장하는 register라고 볼 수 있습니다.
+> {{ :스터디:thread_id.png?direct |}}
+>
+> PL1은 Privilege Level 1로서 User와 Hyper mode를 제외한 모든 mode를 뜻합니다.
+> 전체적인 Level은 다음 그림과 같으며, 하이라이트 된 부분이 PL1입니다.
+> {{ :스터디:privilege_level.png?direct |}} 
+>
+> 결국 thread ID에 0을 저장합니다. 
+> 현재는 kernel의 초기화를 하기 때문에 Kernel mode로 thread ID를 설정합니다.  
+>
+> thread ID를 저장하는 것은 C13으로 설정합니다. 
+> c13을 조작하여 User-Mode와 KernelMode 에서 thread ID를 액세스와 권한을 설정합니다. 
+>>
+>> PL0은 TPIDRURW : User Read/Write Software Thread ID , TPIDRURO : User Read Only Software Thread ID로 설정하고, PL1은 TPIDRPRW : PL1 only Software Thread ID라고 합니다.
+>> 아울러 Kernel에 arm boot 문서에 the ordinary PL1 (privileged kernel modes)라고 합니다.
+>> A.R.M.에 Exception관련 내용을 보아도 UND, SVC, ABT, IRQ, FIQ 는 PL1이라고 하고, PL0에서는 exception을 가질수 없습니다. (ref. B.1.8.4)
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) <nowiki> __glue </nowiki>가 무엇을 뜻하는 건가요?  ** </typo>
+<code c>
+#define cpu_proc_init                   __glue(CPU_NAME,_proc_init) 
+</code>
+----
+> glue 매크로를 들어가면 다음과 같이 정의되어 있습니다.
+> <code c>
+#define ____glue(name,fn)       name##fn
+</code>
+> ##의 의미는 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0&#주차_20130914 | 21주차]] 2번에서 언급했듯이, 해당 인자를 붙여줍니다.
+>
+> 여기서는 CPU_NAME이 <fc #0000FF>cpu_v7</fc>이니 <fc #0000FF>_proc_init</fc>과 붙이면 **"<fc #FF0000>cpu_v7_proc_init</fc>"**이 되겠네요.
+> 추가로, cpu_v7_proc_init은 내용없는 함수 이므로, 아무일도 하지 않습니다.
+>
+> glue의 뜻이 접착제라는 뜻이잖아요? 우리가 많이 사용하는 딱풀이 glue stick이니, 연상으로 기억하시면 될 것 같습니다.
+</WRAP>
+</box>
+
+\\
+<box center round blue 95% | <typo fs:18px;> ** 2.  setup_arch()→setup_machine_fdt() ** </typo>>
+\\
+{{ :스터디:setup_machine_fdt2.png?direct |}}
+\\
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 1) 전에 <nowiki> __init</nowiki>으로 정의된 부분은 초기화가 완료된 후, 삭제한다고 하셨는데 정확한 지점은 어떻게 되나요? ** </typo>
+----
+> kernel이 부팅할 때, 다음과 같은 메세지를 보신적이 있을 겁니다.
+>
+> <fc #0000FF>"Freeing unused kernel memory: 108k freed"</fc>
+>
+> 해당 지점에서 사용한 memory는 free가 됩니다. 나중에 나오겠지만, 대략적으로 위치를 설명하면 다음과 같습니다.
+>
+> kernel_init -> free_initmem -> free_initmem_default -> return free_reserved_area(&_init_begin, &_init_end,poison, "unused kernel")
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 2) <nowiki> __atags_pointer </nowiki>는 head-common.S에서 사용된 포인터 입니다. 하지만 다른 변수들은 EXPORT_SYMBOL을 통해서 가능하다고 하지만, <nowiki> __atags_pointer </nowiki>는 어떻게 아무 정의없이 사용 가능할까요?    ** </typo>
+<code c>
+mdesc = setup_machine_fdt(__atags_pointer)
+</code>
+<code asm>
+__mmap_switched_data:
+        .long   __data_loc                      @ r4
+        .long   _sdata                          @ r5
+        .long   __bss_start                     @ r6
+        .long   _end                            @ r7
+        .long   processor_id                    @ r4
+        .long   __machine_arch_type             @ r5
+        .long   __atags_pointer                 @ r6
+</code>        
+<code c>
+unsigned int processor_id;
+EXPORT_SYMBOL(processor_id);
+unsigned int __machine_arch_type __read_mostly;
+EXPORT_SYMBOL(__machine_arch_type);   
+</code>
+----
+> <nowiki>__EXPORT_SYMBOL 매크로의 용도는 module에 전달하기 위해 __ksymtab에 symbol명 및 address를 저장하기 위한 용도이다. (include/linux/export.h의 주석 참조) </nowiki>
+> <nowiki>__atags_pointer는 module과 관련 없으므로 __EXPORT_SYMBOL을 적용하지 않은 것으로 판단된다.</nowiki>
+> <nowiki>__ksymtab은 나중에 모듈이 자신이 포함하지 않는 symbol을 사용하는 경우 모듈이 로드될 때 내부적으로 simplify_symbols()를 호출하여  __ksymtab에서 얻은 주소를 설정한다.</nowiki>
+> 현재까지 커널 소스를 본 결과 assembly의 경우 global 변수, lds 등에 사용된 변수 등에 별도의 조치 없이 접근 가능하다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 3) <nowiki> __be32 </nowiki>는 big endian을 뜻하나요? ** </typo>
+<code c>
+struct boot_param_header {
+        __be32  magic;                  /* magic word OF_DT_HEADER */
+        __be32  totalsize;              /* total size of DT block */
+        __be32  off_dt_struct;          /* offset to structure */
+        __be32  off_dt_strings;         /* offset to strings */
+        __be32  off_mem_rsvmap;         /* offset to memory reserve map */
+        __be32  version;                /* format version */
+        __be32  last_comp_version;      /* last compatible version */
+        /* version 2 fields below */
+        __be32  boot_cpuid_phys;        /* Physical CPU id we're booting on */
+        /* version 3 fields below */
+        __be32  dt_strings_size;        /* size of the DT strings block */
+        /* version 17 fields below */
+        __be32  dt_struct_size;         /* size of the DT structure block */
+};
+</code>
+----
+> 결론부터 얘기하면 여기서는 u32라고 보시면 됩니다.
+>
+> <nowiki> __be32 </nowiki>를 확인하면 다음과 같의 정의 되어 있습니다.
+> <code c>
+#ifdef __CHECKER__
+#define __bitwise__ __attribute__((bitwise))
+#else
+#define __bitwise__
+#endif
+#ifdef __CHECK_ENDIAN__
+#define __bitwise __bitwise__
+#else
+#define __bitwise
+#endif
+
+typedef __u32 __bitwise __be32;
+</code>
+> CHECKER는 [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0&#주차_20130907 | 20주차]] 1-15)에서 언급하였듯이, sparse에 관한 것입니다.
+>
+> sparse 문서의 내용처럼, 커널 소스에서 "make C=1"이나 "make C=2"라고 명령을 주면, C 소스 파일에 대해 sparse 프로그램을 실행합니다.
+>
+> 그 때 <nowiki> "CHECKFLAGS=-D__CHECKER__ -D__CHECK_ENDIAN__" </nowiki>  옵션을 함께 주면, 소스 코드에서 <nowiki> "__attribute__((bitwise))" </nowiki> 가 활성화 된 상태로 sparse 프로그램이 이를 분석하게 됩니다.
+>
+> 그래서 <nowiki> "__attribute__((bitwise))" </nowiki>  속성이 일치하지 않는 변수 할당 등을 발견하면 다음과 같은 식의 메시지를 출력합니다.
+> <code c>
+validation/foul-bitwise.c:9:9: warning: restricted degrades to integer
+validation/foul-bitwise.c:9:15: warning: restricted degrades to integer
+validation/foul-bitwise.c:19:9: error: incompatible types for operation (-)
+validation/foul-bitwise.c:19:9:    argument has type restricted unsigned short [usertype] a
+</code>
+> 리누스가 sparse를 작성하기 시작한 건 소스 내에서 사용자 메모리 공간에 대한 포인터와 커널 메모리 공간에 대한 포인터가 섞여 쓰이는 문제를 해결하기 위해서였다고 합니다. 컴파일러로는 탐지하기 힘든 코딩 상의 오류이죠.
+>
+> ~linux/include/linux/compiler.h에 그 내용이 들어가 있습니다. 
+> 그리고 이후 그걸 확장해서 엔디안 검사까지 하도록 확장된 듯 합니다.
+>
+> (Ref. [[https://kldp.org/node/83418 | gcc의 __attribute__((bitwise))에 관한 질문]])
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 4) const char *const 문법이 이해가 안갑니다.  ** </typo>
+<code c>
+const char *const       *dt_compat   
+</code>
+----
+> const란 변수를 상수화 하여 사용하기 위한 지시어인데 2중 포인터인 dt_compat 앞에는 총 3개의 const가 붙을 수 있습니다.
+> const char* const* const dt_compat;
+> 
+> 첫번째 **const char*** const* const dt_compat 에서의 const 의미 : dt_compat이 가리키는 포인터가 가리키는 char가 상수로 변경 불가.
+> <code c>
+**dt_compat = 'A';  //error
+</code> 
+> 
+> 두번째 const char* **const*** const dt_compat 에서의 const 의미 : dt_compat이 가리키는 포인터가 상수로 변경 불가.
+> <code c>
+*dt_compat = 주소;  //error
+</code> 
+> 
+> 세번째 const char* const* **const** dt_compat 에서의 const 의미 : dt_compat이 상수 포인터로 값 변경 불가.
+> <code c>
+dt_compat = 주소;  //error
+</code>
+> 여기서는 첫번째와 두번째 const의 의미만 적용하면 되므로
+> dt_compat이 가리키는 첫번째 포인터가 상수로 변경 불가하며 이 포인터가 가르키는 char 역시 상수로 변경 불가합니다.
+> 따라서 만약 실수로 dt_compat가 가리키는 포인터 값들을 변경하였을 경우 에러가 날 것입니다. 
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 5) reboot mode가 여러개 있는데, 각각이 무엇을 의미하는지 정의하고 넘어가면 좋을 것 같습니다.  ** </typo>
+<code c>
+enum reboot_mode {
+        REBOOT_COLD = 0,
+        REBOOT_WARM,
+        REBOOT_HARD,
+        REBOOT_SOFT,
+        REBOOT_GPIO,
+};
+</code>
+----
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0#주차_20131012 | 25주차]] 2-1) 항목으로 대체합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 6) HOTPLUG가 무엇인가요?  ** </typo>
+<code c>
+#ifdef CONFIG_HOTPLUG_CPU
+</code>
+----
+> 리눅스는 <wrap em>CPU 코어를 동적으로 켜고 끌 수 있다.</wrap> 
+> 이를 Hotplug 라고 하며, CPU Core 수에 따른 성능 테스트에도 유용하게 사용할 수 있다. 
+>
+> CPU 정보는 /proc/cpuinfo 파일에서 확인할 수 있다.
+> - processor : 논리 CPU의 ID
+> - physical id : 물리 CPU의 ID 
+> - core id :물리 CPU 내에서 각 core에 할당되는 ID
+> <code>
+processor : 0
+vendor_id : GenuineIntel
+cpu family : 6
+model  : 23
+model name : Intel(R) Core(TM)2 Duo CPU     P8700  @ 2.53GHz
+stepping : 10
+cpu MHz  : 800.000
+cache size : 3072 KB
+physical id : 0
+siblings : 2
+core id  : 0
+cpu cores : 2
+apicid  : 0
+initial apicid : 0
+fpu  : yes
+fpu_exception : yes
+cpuid level : 13
+wp  : yes
+flags  : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx lm constant_tsc arch_perfmon pebs bts nopl aperfmperf pni dtes64 monitor ds_cpl vmx smx est tm2 ssse3 cx16 xtpr pdcm sse4_1 xsave lahf_lm ida dts tpr_shadow vnmi flexpriority
+bogomips : 5053.85
+clflush size : 64
+cache_alignment : 64
+address sizes : 36 bits physical, 48 bits virtual
+power management:
+</code>
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 7) *phys_to_virt()함수의 전체적인 동작 이해가 필요합니다.  ** </typo>
+<code c>
+static inline void *phys_to_virt(phys_addr_t x)
+{
+        return (void *)(__phys_to_virt((unsigned long)(x)));
+}  
+</code>
+----
+> blame 결과는 다음과 같습니다.
+> [[https://github.com/torvalds/linux/commit/dc21af99fadcfa0ae65b52fd0895f85824f0c288 | ARM: P2V: introduce phys_to_virt/virt_to_phys runtime patching]]
+>
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0&#주차_20131005 | 24주차]] 1)~4) 답변으로 대체 합니다.
+</WRAP>
+
+<WRAP center round box 95%>
+<typo fs:16px;>
+** 8) 예전에 한번 봤지만, 정확히 이해를 못했습니다. 대체 ".pushsection", ".popsection"이 의미하는바가 무엇인가요?   ** </typo>
+<code c>
+"       .pushsection .pv_table,\"a\"\n"         \
+"       .long   1b\n"                           \
+"       .popsection\n" 
+</code>
+----
+> [[http://iamroot.org/wiki/doku.php?id=%EC%8A%A4%ED%84%B0%EB%94%94:arm_kernel_%EC%8A%A4%ED%84%B0%EB%94%94_10%EC%B0%A8_full_%EB%B0%94%EB%A1%9C%EA%B0%80%EA%B8%B0&#주차_20131005 | 24주차]] 1) 답변으로 대체 합니다.
+</WRAP>
+</box>
+\\
+\\
+\\
+
+
+
+
+
+
+   

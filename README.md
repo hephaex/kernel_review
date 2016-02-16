@@ -11,8 +11,11 @@ All of this repository are written by hephaex@gmail.com.
 * 132th (2016/02/13) week [132차](https://github.com/hephaex/kernel_review/blob/master/a10c_132.md)
  - vfs_caches_init()
   - mnt_init()
+<<<<<<< HEAD
   - init_rootfs()
   - shmem_init()
+=======
+>>>>>>> 5465a6fe814741f3e22a55772b375d6d064029c6
 
 * 131th (2016/01/23) week [131차](https://github.com/hephaex/kernel_review/blob/master/a10c_131.md)
  - vfs_caches_init()
