@@ -8,11 +8,14 @@ All of this repository are written by hephaex@gmail.com.
  - 2nd: start_kernel()->mm_init: 3.13.x 
 
 # The history of Linux kernel study
+* 138th (2016/04/02) week [138차](https://github.com/hephaex/kernel_review/blob/master/a10c_138.md)
+ - vfs_caches_init()
+  - mnt_init()
+  - init_rootfs()
 * 137th (2016/03/26) week [137차](https://github.com/hephaex/kernel_review/blob/master/a10c_137.md)
  - vfs_caches_init()
   - mnt_init()
   - init_rootfs()
-  - shmem_init()
 * 136th (2016/03/19) week [136차](https://github.com/hephaex/kernel_review/blob/master/a10c_136.md)
  - vfs_caches_init()
   - mnt_init()
