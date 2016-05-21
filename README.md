@@ -5,10 +5,19 @@ All of this repository are written by hephaex@gmail.com.
 * Target Soc    : Samsung Exynos 5420 (ARMv7 A7&A15 bigLITTLE )
 * Kernel version: Linux kernel 3.13.x
  - 1st: 3.10.x, A bootstrab before start_kernel(): 3.10.x
- - 2nd: start_kernel()->mm_init: 3.13.x 
+ - 2nd: start_kernel()->mm_init: 3.13.x
 
 # The history of Linux kernel study
-* 143th (2016/05/14) week [142차](https://github.com/hephaex/kernel_review/blob/master/a10c_143.md)
+* 144th (2016/05/21) week [144차](https://github.com/hephaex/kernel_review/blob/master/a10c_144.md)
+ - vfs_caches_init()
+   - kmem_cache_create(): names_cache
+   - dcache_init()
+   - inode_init()
+   - files_init()
+   - mnt_init()
+   - bdev_cache_init()
+   - chrdev_init()
+* 143th (2016/05/14) week [143차](https://github.com/hephaex/kernel_review/blob/master/a10c_143.md)
  - vfs_caches_init()
   - mnt_init()
 * 142th (2016/04/30) week [142차](https://github.com/hephaex/kernel_review/blob/master/a10c_142.md)
