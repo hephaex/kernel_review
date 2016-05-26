@@ -17,6 +17,7 @@ All of this repository are written by hephaex@gmail.com.
    - mnt_init()
    - bdev_cache_init()
    - chrdev_init()
+   - 
 * 143th (2016/05/14) week [143차](https://github.com/hephaex/kernel_review/blob/master/a10c_143.md)
  - vfs_caches_init()
   - mnt_init()
