@@ -9,7 +9,9 @@ All of this repository are written by hephaex@gmail.com.
 
 # The history of Linux kernel study
 * 145th (2016/05/28) week [145차](https://github.com/hephaex/kernel_review/blob/master/a10c_145.md)
-
+ - vfs_caches_init()
+ - signals_init()
+ - page_writeback_init()
 * 144th (2016/05/21) week [144차](https://github.com/hephaex/kernel_review/blob/master/a10c_144.md)
  - vfs_caches_init()
    - kmem_cache_create(): names_cache
