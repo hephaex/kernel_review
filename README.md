@@ -8,7 +8,11 @@ All of this repository are written by hephaex@gmail.com.
  - 2nd: start_kernel()->mm_init: 3.13.x
 
 # The history of Linux kernel study
+<<<<<<< HEAD
 * 151th (2016/07/16) week [151차](https://github.com/hephaex/kernel_review/blob/master/a10c_151.md)
+=======
+* 150th (2016/07/16) week [151차](https://github.com/hephaex/kernel_review/blob/master/a10c_151.md)
+>>>>>>> 3c36d09ec5787c82e67ba9a8ee97c57f2386264b
  - proc_root_init()
  - cgroup_init()
 * 150th (2016/07/09) week [150차](https://github.com/hephaex/kernel_review/blob/master/a10c_150.md)
