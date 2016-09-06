@@ -10,6 +10,8 @@ All of this repository are written by hephaex@gmail.com.
 # The history of Linux kernel study
 * 154th (2016/08/13) week [154차](https://github.com/hephaex/kernel_review/blob/master/a10c_154.md)
  - cgroup_init()
+* 154th (2016/08/13) week [154차](https://github.com/hephaex/kernel_review/blob/master/a10c_154.md)
+ - cgroup_init()
 * 153th (2016/07/30) week [153차](https://github.com/hephaex/kernel_review/blob/master/a10c_153.md)
  - cgroup_init()
 
