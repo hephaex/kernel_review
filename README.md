@@ -9,6 +9,7 @@ All of this repository are written by hephaex@gmail.com.
 
 
 # The history of Linux kernel study
+
 * 16７th (2016/12/1７) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_16７.md)
  - rest_init()
 * 166th (2016/12/10) week [166차](https://github.com/hephaex/kernel_review/blob/master/a10c_166.md)
