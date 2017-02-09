@@ -12,6 +12,9 @@ All of this repository are written by hephaex@gmail.com.
 
 * 16７th (2016/12/1７) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_16７.md)
  - rest_init()
+ 
+ * 16７th (2016/12/1７) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_16７.md)
+ - rest_init()
 * 166th (2016/12/10) week [166차](https://github.com/hephaex/kernel_review/blob/master/a10c_166.md)
  - rest_init()
 * 165th (2016/12/03) week [165차](https://github.com/hephaex/kernel_review/blob/master/a10c_165.md)
