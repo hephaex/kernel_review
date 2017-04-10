@@ -9,14 +9,14 @@ All of this repository are written by hephaex@gmail.com.
 
 
 # The history of Linux kernel study
-* 169th (2017/02/15) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_169.md)
+* 170th (2017/04/10) week [170차](https://github.com/hephaex/kernel_review/blob/master/a10c_170.md)
  - rest_init()
-* 169th (2017/02/15) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_169.md)
+* 169th (2017/02/08) week [169차](https://github.com/hephaex/kernel_review/blob/master/a10c_169.md)
  - rest_init()
-* 168th (2016/12/1７) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_168.md)
+* 168th (2017/02/01) week [168차](https://github.com/hephaex/kernel_review/blob/master/a10c_168.md)
+ - rest_init()
+* 167th (2016/12/17) week [167차](https://github.com/hephaex/kernel_review/blob/master/a10c_167.md)
  - rest_init() 
-* 16７th (2016/12/1７) week [16７차](https://github.com/hephaex/kernel_review/blob/master/a10c_16７.md)
- - rest_init()
 * 166th (2016/12/10) week [166차](https://github.com/hephaex/kernel_review/blob/master/a10c_166.md)
  - rest_init()
 * 165th (2016/12/03) week [165차](https://github.com/hephaex/kernel_review/blob/master/a10c_165.md)
