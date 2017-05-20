@@ -1,3 +1,4 @@
+
 # The Linux Kernel study of ARMv7 3.13.0 (exynos 5420)
 All of this repository are written by hephaex@gmail.com.
 
@@ -9,6 +10,8 @@ All of this repository are written by hephaex@gmail.com.
 
 
 # The history of Linux kernel study
+* 173th (2017/05/13) week [173차](https://github.com/hephaex/kernel_review/blob/master/a10c_173.md)
+ - rest_init()
 * 172th (2017/04/27) week [172차](https://github.com/hephaex/kernel_review/blob/master/a10c_172.md)
  - rest_init()
 * 171th (2017/04/19) week [171차](https://github.com/hephaex/kernel_review/blob/master/a10c_171.md)
