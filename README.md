@@ -11,6 +11,13 @@ All of this repository are written by hephaex@gmail.com.
 
 
 # The history of Linux kernel study
+* 185th (2017/08/30) week [185차](https://github.com/hephaex/kernel_review/blob/master/a10c_185.md)
+ - rest_init()
+  - schedule_preempt_disabled  1891  ~/init/main.c
+  - schedule         3813  kernel/sched/core.c
+  - __schedule       3785  kernel/sched/core.c
+  - context_switch   3741  context_switch(rq, prev, next); /* unlocks the rq */
+  - switch_to        3085  switch_to(prev, next, prev);
 * 184th (2017/08/23) week [184차](https://github.com/hephaex/kernel_review/blob/master/a10c_184.md)
  - rest_init()
 * 183th (2017/08/19) week [183차](https://github.com/hephaex/kernel_review/blob/master/a10c_183.md)
