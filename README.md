@@ -11,7 +11,30 @@ All of this repository are written by hephaex@gmail.com.
 
 
 # The history of Linux kernel study
-* 186th (2017/09/08) week [187차](https://github.com/hephaex/kernel_review/blob/master/a10c_187.md)
+* 187th (2017/09/13) week [187차](https://github.com/hephaex/kernel_review/blob/master/a10c_187.md)
+ - rest_init()
+  - schedule_preempt_disabled  1892  init/main.c
+  - schedule         3968  sched/core.c
+  - __schedule       3935  sched/core.c
+  - context_switch   3881  kernel/sched/core.c
+  - ret_from_fork    3190  kernel/sched/core.c
+  - kernel_init       119  arch/arm/kernel/entry-common.S
+  - kernel_init_freeable  2589  init/main.c
+  - wait_for_completion  2636  init/main.c
+  - wait_for_common   190  kernel/sched/completion.c
+  - __wait_for_common   166  kernel/sched/completion.c
+  - do_wait_for_common   155  kernel/sched/completion.c
+  - schedule_timeout   128  kernel/sched/completion.c
+  - schedule         1680  kernel/timer.c
+  - __schedule       3935  kernel/sched/core.c
+  - deactivate_task  3764  kernel/sched/core.c
+  - dequeue_task     1228  kernel/sched/core.c
+  - dequeue_task_fair  1071  kernel/sched/core.c
+  - dequeue_entity   5135  dequeue_entity(cfs_rq, se, flags);
+  - update_curr      3757  update_curr(cfs_rq);
+  - update_min_vruntime  1256  update_min_vruntime(cfs_rq);
+
+* 186th (2017/09/08) week [186차](https://github.com/hephaex/kernel_review/blob/master/a10c_186.md)
  - rest_init()
    - schedule_preempt_disabled  1891  ~/init/main.c
    - schedule         3813  kernel/sched/core.c
