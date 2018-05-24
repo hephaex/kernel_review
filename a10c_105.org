@@ -9,8 +9,9 @@
 ## 104 주차 진도
 
 ```
-1  1 start_kernel        1  ~/kernel/iamroot/linux-stable/init/main.c
-2  2 sched_clock_postinit   750  ~/kernel/iamroot/linux-stable/init/main.c
+start_kernel  ~/kernel/iamroot/linux-stable/init/main.c
+sched_clock_postinit   
+ ~/kernel/iamroot/linux-stable/init/main.c
 ```
 
 ## main.c::main.c()
